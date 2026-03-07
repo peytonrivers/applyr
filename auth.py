@@ -95,5 +95,5 @@ async def retrieve_information(code: str, request: Request):
         finally:
             session.close()
 
-        return RedirectResponse(url=f"{FRONTEND_URL}/signup.html")
+        return RedirectResponse(url=finish_signup)
     
