@@ -3,15 +3,15 @@ from sqlalchemy import create_engine, Column, Integer, String, Boolean, Text, Da
 from sqlalchemy.orm import sessionmaker, declarative_base
 import uuid
 from uuid import uuid4
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
-username = "peytonrivers"
-host = "localhost"
-port = 5432
-database_name = "applyrdb"
+engine = create_engine(url=DATABASE_URL, echo=True)
 
-
-engine = create_engine(f"postgresql+psycopg2://{username}:password@{host}:{port}/{database_name}", echo=True)
 
 Session = sessionmaker(bind=engine, autocommit=False)
 
@@ -38,4 +38,7 @@ class Users(Base):
 
 
 def init_db():
-    Base.metadat
+    Base.metadata.create_all(bind=engine)
+
+if __name__ == "__main__":
+    init_db()
