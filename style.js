@@ -4,14 +4,14 @@
 document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll(".btn-google").forEach(btn => {
     btn.addEventListener("click", () => {
-      window.location.href = "http://127.0.0.1:8000/auth/google";
+      window.location.href = "https://applyr-12k0.onrender.com/auth/google";
     });
   });
 
   const primaryBtn = document.querySelector(".btn-primary");
   if (primaryBtn) {
     primaryBtn.addEventListener("click", () => {
-      window.location.href = "http://127.0.0.1:8000/auth/google";
+      window.location.href = "https://applyr-12k0.onrender.com/auth/google";
     });
   }
 });
@@ -62,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/complete-signup", {
+      const response = await fetch("https://applyr-12k0.onrender.com/complete-signup", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
