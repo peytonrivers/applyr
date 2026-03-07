@@ -55,4 +55,31 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!isValidPhone.test(phone_number)) {
-      window.location.href = "error.htm
+      window.location.href = "error.html";
+      return;
+    }
+
+    try {
+      const response = await fetch("http://127.0.0.1:8000/complete-signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          first_name,
+          last_name,
+          phone_number
+        })
+      });
+
+      if (response.ok) {
+        window.location.href = "complete.html";
+      } else {
+        window.location.href = "error.html";
+      }
+    } catch (error) {
+      window.location.href = "error.html";
+    }
+  });
+});
