@@ -7,22 +7,12 @@
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const params = new URLSearchParams(window.location.search);
-            const token = params.get('token');
-            const signup_complete = params.get('signup_complete') === 'True';
-            const user_id = params.get('user_id');
-            
-            if (token) {
-                localStorage.setItem('token', token);
-                
-                if (signup_complete === true || signup_complete === 'True') {
-                    // User already completed signup - go to dashboard
-                    window.location.href = 'dashboard.html';
-                } else {
-                    // User needs to complete signup
-                    window.location.href = 'signup.html';
-                }
+            const signup_complete = params.get('signup_complete') === 'true';
+
+            if (signup_complete) {
+                window.location.href = 'complete.html';
             } else {
-                window.location.href = 'index.html';
+                window.location.href = 'signup.html';
             }
         });
     </script>

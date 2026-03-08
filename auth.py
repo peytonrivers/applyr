@@ -1,12 +1,13 @@
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import RedirectResponse
 from urllib.parse import urlencode
 from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
-from database import session, Users
+from database import Users, get_db
+from sqlalchemy.orm import Session
 
 router = APIRouter()
 
@@ -19,15 +20,13 @@ FRONTEND_URL = os.getenv("FRONTEND_URL")
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
+
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
-    if expires_delta:
-        expire = datetime.utcnow() + expires_delta
-    else:
-        expire = datetime.utcnow() + timedelta(days=7)
+    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(days=7))
     to_encode.update({"exp": expire})
-    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-    return encoded_jwt
+    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
 
 @router.get("/auth/google")
 def login_page():
@@ -37,73 +36,80 @@ def login_page():
         "response_type": "code",
         "scope": "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
         "access_type": "offline",
-        "prompt": "consent"
+        "prompt": "consent",
     }
-    google_auth_url = "https://accounts.google.com/o/oauth2/v2/auth"
-    url = f"{google_auth_url}?{urlencode(query_params)}"
+    url = f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(query_params)}"
     return RedirectResponse(url)
 
+
 @router.get("/auth/google/callback")
-async def retrieve_information(code: str):
+async def retrieve_information(code: str, db: Session = Depends(get_db)):
     token_url = "https://oauth2.googleapis.com/token"
     data = {
         "code": code,
         "client_id": GOOGLE_CLIENT_ID,
         "client_secret": GOOGLE_CLIENT_SECRET,
         "redirect_uri": REDIRECT_URI,
-        "grant_type": "authorization_code"
+        "grant_type": "authorization_code",
     }
 
     async with httpx.AsyncClient() as client:
         client_data = await client.post(token_url, data=data)
         if client_data.status_code != 200:
             return RedirectResponse(url=f"{FRONTEND_URL}/error.html")
-        
+
         info = client_data.json()
         access_token = info.get("access_token")
         if not access_token:
             return RedirectResponse(url=f"{FRONTEND_URL}/error.html")
-        
-        userinfo_url = "https://openidconnect.googleapis.com/v1/userinfo"
-        information = await client.get(userinfo_url, headers={"Authorization": f"Bearer {access_token}"})
 
+        userinfo_url = "https://openidconnect.googleapis.com/v1/userinfo"
+        information = await client.get(
+            userinfo_url, headers={"Authorization": f"Bearer {access_token}"}
+        )
         if information.status_code != 200:
             return RedirectResponse(url=f"{FRONTEND_URL}/error.html")
-        
+
         google_user = information.json()
         google_sub = google_user.get("sub")
         email = google_user.get("email")
         picture = google_user.get("picture")
-        
-        try:
-            user = session.query(Users).filter(Users.google_sub == google_sub).first()
 
-            if not user:
-                # New user - create account
-                user = Users(
-                    google_sub=google_sub,
-                    email=email,
-                    profile_photo_url=picture,
-                    signup_complete=False,
-                )
-                session.add(user)
-                session.commit()
-                session.refresh(user)
-            else:
-                # Existing user - update profile
-                user.email = email
-                user.profile_photo_url = picture
-                session.commit()
-            
-            # Issue JWT token
-            jwt_token = create_access_token({"sub": str(user.user_id)})
-            
-            # Redirect to frontend callback page with token
-            signup_complete_str = "true" if user.signup_complete else "false"
-            callback_url = f"{FRONTEND_URL}/auth-callback.html?token={jwt_token}&signup_complete={signup_complete_str}&user_id={user.user_id}"
-            return RedirectResponse(url=callback_url, status_code=302)
+    try:
+        user = db.query(Users).filter(Users.google_sub == google_sub).first()
 
-        except Exception as e:
-            session.rollback()
-            return RedirectResponse(url=f"{FRONTEND_URL}/error.html")
-    
+        if not user:
+            user = Users(
+                google_sub=google_sub,
+                email=email,
+                profile_photo_url=picture,
+                signup_complete=False,
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        else:
+            user.email = email
+            user.profile_photo_url = picture
+            db.commit()
+
+        jwt_token = create_access_token({"sub": str(user.user_id)})
+        signup_complete_str = "true" if user.signup_complete else "false"
+
+        redirect = RedirectResponse(
+            url=f"{FRONTEND_URL}/auth-callback.html?signup_complete={signup_complete_str}&user_id={user.user_id}",
+            status_code=302,
+        )
+        redirect.set_cookie(
+            key="token",
+            value=jwt_token,
+            httponly=True,
+            secure=True,
+            samesite="none",   # required for cross-domain (apply-r.com → onrender.com)
+            max_age=60 * 60 * 24 * 7,
+        )
+        return redirect
+
+    except Exception:
+        db.rollback()
+        return RedirectResponse(url=f"{FRONTEND_URL}/error.html")

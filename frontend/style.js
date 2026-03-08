@@ -51,33 +51,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        window.location.href = "index.html";
-        return;
-      }
-
       const response = await fetch("https://applyr-12k0.onrender.com/complete-signup", {
         method: "POST",
+        credentials: "include",   // sends the HttpOnly cookie automatically — no token needed
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
         },
-        body: JSON.stringify({
-          first_name,
-          last_name,
-          phone_number
-        })
+        body: JSON.stringify({ first_name, last_name, phone_number }),
       });
 
       if (response.ok) {
-        const data = await response.json();
-        localStorage.removeItem('token');
         window.location.href = "complete.html";
+      } else if (response.status === 401) {
+        // Cookie missing or expired — send back to login
+        window.location.href = "index.html";
       } else {
-        const error = await response.json();
-        console.error("Signup error:", error);
+        console.error("Signup error:", await response.json());
         window.location.href = "error.html";
       }
     } catch (error) {
