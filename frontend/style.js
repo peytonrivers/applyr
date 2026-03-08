@@ -81,9 +81,4 @@ document.addEventListener("DOMContentLoaded", () => {
         window.location.href = "error.html";
       }
     } catch (error) {
-      window.location.href = "error.html";
-    }
-  });
-});
-
-
+      window.location.href =
