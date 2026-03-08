@@ -1,21 +1,3 @@
-
-
-
-document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".btn-google").forEach(btn => {
-    btn.addEventListener("click", () => {
-      window.location.href = "https://applyr-12k0.onrender.com/auth/google";
-    });
-  });
-
-  const primaryBtn = document.querySelector(".btn-primary");
-  if (primaryBtn) {
-    primaryBtn.addEventListener("click", () => {
-      window.location.href = "https://applyr-12k0.onrender.com/auth/google";
-    });
-  }
-});
-
 // ---------- SIGNUP FORM REDIRECT ----------
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -81,4 +63,9 @@ document.addEventListener("DOMContentLoaded", () => {
         window.location.href = "error.html";
       }
     } catch (error) {
-      window.location.href =
+      window.location.href = "error.html";
+    }
+  });
+});
+
+
