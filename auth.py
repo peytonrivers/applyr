@@ -98,4 +98,26 @@ async def retrieve_information(code: str, request: Request):
                 user.profile_photo_url = picture
                 session.commit()
 
-        e
+        except Exception as e:
+            session.rollback()
+            return RedirectResponse(url=f"{FRONTEND_URL}/error.html", status_code=302)
+
+        finally:
+            session.close()
+
+        
+
+        response.set_cookie(
+            key="google_sub",
+            value=google_sub,
+            httponly=True,
+            secure=True,
+            samesite="None",
+            max_age=60*60*24*7
+        )
+
+
+        print("CALLBACK google_sub:", google_sub)
+        print("CALLBACK redirecting to:", response.headers.get("location"))
+        return response
+    
