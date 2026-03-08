@@ -1,13 +1,12 @@
 // ---------- SIGNUP FORM REDIRECT ----------
 
-
-
 document.querySelectorAll(".btn").forEach(btn => {
   btn.addEventListener("click", () => {
     window.location.href = "https://applyr-12k0.onrender.com/auth/google";
   });
 });
 
+// Handle OAuth callback
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("signupForm");
   const firstNameInput = document.getElementById("firstName");
@@ -52,12 +51,19 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        window.location.href = "index.html";
+        return;
+      }
+
       const response = await fetch("https://applyr-12k0.onrender.com/complete-signup", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
         },
-        credentials: "include",
         body: JSON.stringify({
           first_name,
           last_name,
@@ -66,14 +72,17 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (response.ok) {
+        const data = await response.json();
+        localStorage.removeItem('token');
         window.location.href = "complete.html";
       } else {
-        window.location.href = "index.html";
+        const error = await response.json();
+        console.error("Signup error:", error);
+        window.location.href = "error.html";
       }
     } catch (error) {
-      window.location.href = "signup.html";
+      console.error("Request failed:", error);
+      window.location.href = "error.html";
     }
   });
 });
-
-
