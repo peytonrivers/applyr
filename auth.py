@@ -99,7 +99,8 @@ async def retrieve_information(code: str):
             jwt_token = create_access_token({"sub": str(user.user_id)})
             
             # Redirect to frontend callback page with token
-            callback_url = f"{FRONTEND_URL}/auth-callback.html?token={jwt_token}&signup_complete={user.signup_complete}&user_id={user.user_id}"
+            signup_complete_str = "true" if user.signup_complete else "false"
+            callback_url = f"{FRONTEND_URL}/auth-callback.html?token={jwt_token}&signup_complete={signup_complete_str}&user_id={user.user_id}"
             return RedirectResponse(url=callback_url, status_code=302)
 
         except Exception as e:
