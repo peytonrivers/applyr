@@ -21,7 +21,7 @@
       </div>
 
       <div class="header-box-right">
-        <button class="btn btn-primary">Sign Up</button>
+        <button id="headerSignUpBtn" class="btn btn-primary">Sign Up</button>
       </div>
     </div>
   </header>
@@ -41,7 +41,7 @@
         </p>
 
         <div class="cta-row">
-          <button class="btn btn-google btn-cta" type="button">
+          <button id="heroSignUpBtn" class="btn btn-google btn-cta" type="button">
             <span class="google-icon" aria-hidden="true">
               <svg viewBox="0 0 48 48" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
                 <path fill="#EA4335" d="M24 9.5c3.54 0 6.02 1.53 7.4 2.81l5.4-5.4C33.98 4.36 29.54 2.5 24 2.5 14.9 2.5 7.18 7.68 3.54 15.22l6.62 5.14C11.83 14.1 17.45 9.5 24 9.5z"/>
@@ -65,12 +65,10 @@
             <div class="stat-value">10+</div>
             <div class="stat-label">Hours Saved Per Week</div>
           </div>
-
           <div class="stat">
             <div class="stat-value">500+</div>
             <div class="stat-label">Applications Per Month</div>
           </div>
-
           <div class="stat">
             <div class="stat-value">5x</div>
             <div class="stat-label">More Interview Invites</div>
@@ -85,30 +83,21 @@
         <h2 class="section-title">
           Simple, powerful, <span class="section-accent">automated</span>
         </h2>
-
         <div class="how-grid">
           <article class="how-card">
             <div class="step-pill">1</div>
             <h3 class="how-title">Tell us about yourself.</h3>
-            <p class="how-text">
-              Tell us your basic information, as well as a few traits about yourself. Our AI learns what type of candidate your are and enhances your application questions.
-            </p>
+            <p class="how-text">Tell us your basic information, as well as a few traits about yourself. Our AI learns what type of candidate your are and enhances your application questions.</p>
           </article>
-
           <article class="how-card">
             <div class="step-pill">2</div>
             <h3 class="how-title">Download Our Extension</h3>
-            <p class="how-text">
-              Once you download our extension a pop-up will appear once you are on the linkedin screen that will allow you to auto-apply to applications.
-            </p>
+            <p class="how-text">Once you download our extension a pop-up will appear once you are on the linkedin screen that will allow you to auto-apply to applications.</p>
           </article>
-
           <article class="how-card">
             <div class="step-pill">3</div>
             <h3 class="how-title">Sit back and Relax</h3>
-            <p class="how-text">
-              Once you click auto-apply our software will automatically go through the application process and fill it out for you.
-            </p>
+            <p class="how-text">Once you click auto-apply our software will automatically go through the application process and fill it out for you.</p>
           </article>
         </div>
       </div>
@@ -119,24 +108,20 @@
       <div class="container">
         <h2 class="waitlist-title">Ready to automate your job<br class="break-mobile" /> search?</h2>
         <p class="waitlist-subtitle">Join the waitlist for early access.</p>
-
         <div class="cta-row">
-            <button id="googleSignupBtn" class="btn btn-google btn-cta" type="button">
-                <span class="google-icon" aria-hidden="true">
-                    <svg viewBox="0 0 48 48" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
-                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.02 1.53 7.4 2.81l5.4-5.4C33.98 4.36 29.54 2.5 24 2.5 14.9 2.5 7.18 7.68 3.54 15.22l6.62 5.14C11.83 14.1 17.45 9.5 24 9.5z"/>
-                        <path fill="#4285F4" d="M46.5 24.5c0-1.57-.14-3.08-.4-4.5H24v8.52h12.7c-.55 2.97-2.2 5.49-4.7 7.18l7.2 5.59C43.67 37.13 46.5 31.36 46.5 24.5z"/>
-                        <path fill="#FBBC05" d="M10.16 28.64A14.9 14.9 0 0 1 9.35 24c0-1.61.28-3.17.81-4.64l-6.62-5.14A21.5 21.5 0 0 0 2.5 24c0 3.48.83 6.77 2.31 9.78l6.35-5.14z"/>
-                        <path fill="#34A853" d="M24 45.5c5.54 0 10.2-1.83 13.6-4.98l-7.2-5.59c-2 1.35-4.55 2.15-6.4 2.15-6.55 0-12.17-4.6-13.84-10.86l-6.35 5.14C7.18 40.32 14.9 45.5 24 45.5z"/>
-                        <path fill="none" d="M2.5 2.5h43v43h-43z"/>
-                    </svg>
-                </span>
+          <button id="googleSignupBtn" class="btn btn-google btn-cta" type="button">
+            <span class="google-icon" aria-hidden="true">
+              <svg viewBox="0 0 48 48" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.02 1.53 7.4 2.81l5.4-5.4C33.98 4.36 29.54 2.5 24 2.5 14.9 2.5 7.18 7.68 3.54 15.22l6.62 5.14C11.83 14.1 17.45 9.5 24 9.5z"/>
+                <path fill="#4285F4" d="M46.5 24.5c0-1.57-.14-3.08-.4-4.5H24v8.52h12.7c-.55 2.97-2.2 5.49-4.7 7.18l7.2 5.59C43.67 37.13 46.5 31.36 46.5 24.5z"/>
+                <path fill="#FBBC05" d="M10.16 28.64A14.9 14.9 0 0 1 9.35 24c0-1.61.28-3.17.81-4.64l-6.62-5.14A21.5 21.5 0 0 0 2.5 24c0 3.48.83 6.77 2.31 9.78l6.35-5.14z"/>
+                <path fill="#34A853" d="M24 45.5c5.54 0 10.2-1.83 13.6-4.98l-7.2-5.59c-2 1.35-4.55 2.15-6.4 2.15-6.55 0-12.17-4.6-13.84-10.86l-6.35 5.14C7.18 40.32 14.9 45.5 24 45.5z"/>
+                <path fill="none" d="M2.5 2.5h43v43h-43z"/>
+              </svg>
+            </span>
             Sign Up with Google
-            </button>
+          </button>
         </div>
-        
-        </div>
-
         <div class="trust-row">
           <div class="trust-item">
             <span class="check" aria-hidden="true">✓</span>
@@ -156,7 +141,6 @@
         </svg>
         <span class="brand">ApplyR</span>
       </div>
-
       <div class="footer-copy">© 2026 ApplyR. All rights reserved.</div>
     </div>
   </footer>

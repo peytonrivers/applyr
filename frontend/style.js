@@ -1,14 +1,34 @@
-// ---------- SIGNUP FORM REDIRECT ----------
+// ---------- SIGN UP BUTTONS (index.html only) ----------
+// Target only the specific sign up buttons, not every .btn on every page
 
-// Only target the sign up button on index.html
-const signUpBtn = document.getElementById("signUpBtn");
-if (signUpBtn) {
-  signUpBtn.addEventListener("click", () => {
-    window.location.href = "https://applyr-12k0.onrender.com/auth/google";
+const googleAuthUrl = "https://applyr-12k0.onrender.com/auth/google";
+
+// Header "Sign Up" button
+const headerSignUpBtn = document.getElementById("headerSignUpBtn");
+if (headerSignUpBtn) {
+  headerSignUpBtn.addEventListener("click", () => {
+    window.location.href = googleAuthUrl;
   });
 }
 
-// Handle OAuth callback
+// Hero "Sign Up with Google" button
+const heroSignUpBtn = document.getElementById("heroSignUpBtn");
+if (heroSignUpBtn) {
+  heroSignUpBtn.addEventListener("click", () => {
+    window.location.href = googleAuthUrl;
+  });
+}
+
+// Waitlist "Sign Up with Google" button
+const googleSignupBtn = document.getElementById("googleSignupBtn");
+if (googleSignupBtn) {
+  googleSignupBtn.addEventListener("click", () => {
+    window.location.href = googleAuthUrl;
+  });
+}
+
+// ---------- SIGNUP FORM (signup.html) ----------
+
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("signupForm");
   const firstNameInput = document.getElementById("firstName");
@@ -70,7 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (response.ok) {
-        sessionStorage.removeItem("token");  // clean up after successful signup
+        sessionStorage.removeItem("token");
         window.location.href = "complete.html";
       } else if (response.status === 401) {
         window.location.href = "index.html";
