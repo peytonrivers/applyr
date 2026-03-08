@@ -68,10 +68,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response.ok) {
         window.location.href = "complete.html";
       } else {
-        window.location.href = "error.html";
+        window.location.href = "index.html";
       }
     } catch (error) {
-      window.location.href = "error.html";
+      window.location.href = "signup.html";
     }
   });
 });

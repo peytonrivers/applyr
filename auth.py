@@ -58,11 +58,13 @@ async def retrieve_information(code: str, request: Request):
             return RedirectResponse(url=f"{FRONTEND_URL}/error.html", status_code=302)
         
         client_lis = information.json()
+
         google_sub = client_lis.get("sub")
+        
         email = client_lis.get("email")
         picture = client_lis.get("picture")
         finish_signup = f"{FRONTEND_URL}/signup.html"
-        request.session["google_sub"] = google_sub
+        response = RedirectResponse(url=f"{FRONTEND_URL}/signup.html")
         try:
             user = session.query(Users).filter(Users.google_sub == google_sub).first()
 
@@ -81,19 +83,19 @@ async def retrieve_information(code: str, request: Request):
                 user.email = email
                 user.profile_photo_url = picture
                 session.commit()
-                return RedirectResponse(url=f"{FRONTEND_URL}/complete.html")
+                response.set_cookie(
+                    key="google_sub",
+                    value=google_sub,
+                    httponly=True,
+                    secure=True,
+                    samesite="None",
+                    max_age=60*60*24*7
+                )
+                return response
 
             else:
                 user.email = email
                 user.profile_photo_url = picture
                 session.commit()
 
-        except Exception as e:
-            session.rollback()
-            return RedirectResponse(url=f"{FRONTEND_URL}/error.html", status_code=302)
-
-        finally:
-            session.close()
-
-        return RedirectResponse(url=finish_signup)
-    
+        e
