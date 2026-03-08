@@ -1,5 +1,4 @@
 
-Copy
 
 from fastapi import FastAPI, Depends, HTTPException, Cookie
 from fastapi.middleware.cors import CORSMiddleware
