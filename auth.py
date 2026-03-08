@@ -96,19 +96,11 @@ async def retrieve_information(code: str, db: Session = Depends(get_db)):
         jwt_token = create_access_token({"sub": str(user.user_id)})
         signup_complete_str = "true" if user.signup_complete else "false"
 
-        redirect = RedirectResponse(
-            url=f"{FRONTEND_URL}/auth-callback.html?signup_complete={signup_complete_str}&user_id={user.user_id}",
+        # Token in URL — frontend reads it, stores in sessionStorage, wipes from URL
+        return RedirectResponse(
+            url=f"{FRONTEND_URL}/auth-callback.html?token={jwt_token}&signup_complete={signup_complete_str}",
             status_code=302,
         )
-        redirect.set_cookie(
-            key="token",
-            value=jwt_token,
-            httponly=True,
-            secure=True,
-            samesite="none",   # required for cross-domain (apply-r.com → onrender.com)
-            max_age=60 * 60 * 24 * 7,
-        )
-        return redirect
 
     except Exception:
         db.rollback()

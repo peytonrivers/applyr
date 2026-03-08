@@ -7,12 +7,24 @@
     <script>
         document.addEventListener("DOMContentLoaded", () => {
             const params = new URLSearchParams(window.location.search);
-            const signup_complete = params.get('signup_complete') === 'true';
+            const token = params.get("token");
+            const signup_complete = params.get("signup_complete") === "true";
+
+            if (!token) {
+                window.location.href = "index.html";
+                return;
+            }
+
+            // Store in sessionStorage — safer than localStorage, clears when tab closes
+            sessionStorage.setItem("token", token);
+
+            // Wipe token from URL so it's not sitting in browser history
+            window.history.replaceState({}, "", "/auth-callback.html");
 
             if (signup_complete) {
-                window.location.href = 'complete.html';
+                window.location.href = "complete.html";
             } else {
-                window.location.href = 'signup.html';
+                window.location.href = "signup.html";
             }
         });
     </script>

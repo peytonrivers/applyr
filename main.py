@@ -1,7 +1,6 @@
-
-
-from fastapi import FastAPI, Depends, HTTPException, Cookie
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from auth import router as auth_router
 from dotenv import load_dotenv
@@ -16,6 +15,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 
 app = FastAPI()
+security = HTTPBearer()
 
 app.add_middleware(
     CORSMiddleware,
@@ -27,7 +27,7 @@ app.add_middleware(
         "http://localhost:5500",
         "http://127.0.0.1:5500",
     ],
-    allow_credentials=True,   # required for cookies to work cross-domain
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -35,12 +35,11 @@ app.add_middleware(
 app.include_router(auth_router)
 
 
-def get_current_user_id(token: str = Cookie(None)) -> str:
-    """Reads the JWT from the HttpOnly cookie set after Google OAuth."""
-    if not token:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> str:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         user_id = payload.get("sub")
         if user_id is None:
             raise HTTPException(status_code=401, detail="Invalid token")
