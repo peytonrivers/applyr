@@ -1,10 +1,12 @@
 // ---------- SIGNUP FORM REDIRECT ----------
 
-document.querySelectorAll(".btn").forEach(btn => {
-  btn.addEventListener("click", () => {
+// Only target the sign up button on index.html
+const signUpBtn = document.getElementById("signUpBtn");
+if (signUpBtn) {
+  signUpBtn.addEventListener("click", () => {
     window.location.href = "https://applyr-12k0.onrender.com/auth/google";
   });
-});
+}
 
 // Handle OAuth callback
 document.addEventListener("DOMContentLoaded", () => {
