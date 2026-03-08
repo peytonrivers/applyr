@@ -2,8 +2,10 @@
 
 
 
-document.querySelector(".btn-primary").addEventListener("click", () => {
-  window.location.href = "https://applyr-12k0.onrender.com/auth/google";
+document.querySelectorAll(".btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    window.location.href = "https://applyr-12k0.onrender.com/auth/google";
+  });
 });
 
 document.addEventListener("DOMContentLoaded", () => {
