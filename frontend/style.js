@@ -77,7 +77,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!isValidPhone.test(phone_number)) {
-      window.location.href = "error.html";
+      phoneInput.setCustomValidity("Please enter a valid 10-digit phone number.");
+      phoneInput.reportValidity();
       return;
     }
 
