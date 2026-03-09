@@ -1,3 +1,44 @@
+/* ============================================================
+   style.js  —  Scroll Reveal
+   Uses IntersectionObserver to add .visible to [data-reveal]
+   elements as they enter the viewport.
+   ============================================================ */
+
+(function () {
+  /* --- Observer config ---
+     threshold: how much of the element must be visible before it fires
+     rootMargin: fires slightly before the element fully enters (feels snappier) */
+  const OBSERVER_OPTIONS = {
+    threshold: 0.12,
+    rootMargin: '0px 0px -40px 0px',
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+        // Stop watching once revealed — no need to re-animate
+        observer.unobserve(entry.target);
+      }
+    });
+  }, OBSERVER_OPTIONS);
+
+  /* Observe every element that has [data-reveal] */
+  function initReveal() {
+    document.querySelectorAll('[data-reveal]').forEach((el) => {
+      observer.observe(el);
+    });
+  }
+
+  /* Run after DOM is ready */
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initReveal);
+  } else {
+    initReveal();
+  }
+})();
+
+
 // ---------- SIGN UP BUTTONS (index.html only) ----------
 // Target only the specific sign up buttons, not every .btn on every page
 
