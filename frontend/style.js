@@ -51,6 +51,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (phoneInput) {
     phoneInput.addEventListener("input", () => {
+      phoneInput.setCustomValidity("");
       const digits = phoneInput.value.replace(digitsOnly, "").slice(0, 10);
       let formatted = "";
       if (digits.length <= 3) {
