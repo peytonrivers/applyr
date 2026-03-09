@@ -429,3 +429,145 @@ body{
   }
 }
 
+
+/* ============================================
+   MOBILE LAYOUT IMPROVEMENTS
+   Add to the bottom of index.css
+   Only affects screens â‰¤ 720px â€” desktop untouched
+   ============================================ */
+
+@media (max-width: 720px) {
+
+  /* --- HERO --- */
+  .hero {
+    padding: 72px 0 60px;
+  }
+
+  .hero-title {
+    font-size: clamp(2.6rem, 10vw, 3.4rem);
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+    margin-bottom: 20px;
+  }
+
+  .hero-subtitle {
+    font-size: 1.1rem;
+    margin-bottom: 36px;
+    max-width: 38ch;
+  }
+
+  .cta-row {
+    margin-top: 0;
+  }
+
+  .btn-cta {
+    width: min(340px, 88vw);
+    height: 62px;
+    font-size: 1.1rem;
+  }
+
+  /* --- STATS: keep 3 columns side-by-side on mobile --- */
+  .stats {
+    padding: 52px 0 44px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(3, 1fr);  /* override the 1-col stacking */
+    gap: 0;
+  }
+
+  .stat {
+    padding: 20px 6px;
+  }
+
+  .stat-value {
+    font-size: clamp(1.8rem, 7vw, 2.6rem);
+    margin-bottom: 6px;
+  }
+
+  .stat-label {
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  /* --- HOW IT WORKS --- */
+  .how {
+    padding: 64px 0 72px;
+  }
+
+  .section-title {
+    font-size: clamp(1.9rem, 7.5vw, 2.4rem);
+    margin-bottom: 42px;
+  }
+
+  .how-grid {
+    gap: 40px;
+  }
+
+  .how-card {
+    padding: 0 8px;
+  }
+
+  .step-pill {
+    width: 58px;
+    height: 58px;
+    font-size: 1.1rem;
+    margin-bottom: 14px;
+  }
+
+  .how-title {
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+  }
+
+  .how-text {
+    font-size: 1rem;
+    max-width: 44ch;
+  }
+
+  /* --- WAITLIST --- */
+  .waitlist {
+    padding: 80px 0 80px;
+  }
+
+  .waitlist-title {
+    font-size: clamp(2.1rem, 8.5vw, 2.8rem);
+    margin-bottom: 16px;
+  }
+
+  .waitlist-subtitle {
+    font-size: 1.05rem;
+    margin-bottom: 36px;
+  }
+
+  .trust-row {
+    margin-top: 24px;
+  }
+
+  /* --- FOOTER --- */
+  .footer {
+    padding: 44px 0 48px;
+  }
+
+}
+
+/* Slightly tighter on very small screens (â‰¤ 400px) */
+@media (max-width: 400px) {
+
+  .hero {
+    padding: 60px 0 52px;
+  }
+
+  .hero-title {
+    font-size: 2.4rem;
+  }
+
+  .stat-value {
+    font-size: 1.6rem;
+  }
+
+  .stat-label {
+    font-size: 0.72rem;
+  }
+
+}
