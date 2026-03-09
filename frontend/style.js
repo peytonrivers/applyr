@@ -51,7 +51,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (phoneInput) {
     phoneInput.addEventListener("input", () => {
-      phoneInput.value = phoneInput.value.replace(digitsOnly, "").slice(0, 10);
+      const digits = phoneInput.value.replace(digitsOnly, "").slice(0, 10);
+      let formatted = "";
+      if (digits.length <= 3) {
+        formatted = digits.length ? `(${digits}` : "";
+      } else if (digits.length <= 6) {
+        formatted = `(${digits.slice(0, 3)}) ${digits.slice(3)}`;
+      } else {
+        formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+      }
+      phoneInput.value = formatted;
     });
   }
 
@@ -60,7 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const first_name = firstNameInput?.value.trim() || "";
     const last_name = lastNameInput?.value.trim() || "";
-    const phone_number = phoneInput?.value.trim() || "";
+    const phone_number = phoneInput?.value.replace(digitsOnly, "") || "";
 
     if (!isValidName.test(first_name) || !isValidName.test(last_name)) {
       window.location.href = "error.html";
