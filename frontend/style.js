@@ -61,12 +61,11 @@ if (heroSignUpBtn) {
 }
 
 // Waitlist "Sign Up with Google" button
-const googleSignupBtn = document.getElementById("googleSignupBtn");
-if (googleSignupBtn) {
-  googleSignupBtn.addEventListener("click", () => {
+document.querySelectorAll('.btn-signup').forEach((btn) => {
+  btn.addEventListener('click', () => {
     window.location.href = googleAuthUrl;
   });
-}
+});
 
 // ---------- SIGNUP FORM (signup.html) ----------
 
