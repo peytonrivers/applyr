@@ -53,6 +53,9 @@ body {
   box-shadow: 0 14px 28px rgba(10, 102, 194, 0.26);
 }
 
+/* ============================================================
+   HEADER
+   ============================================================ */
 .site-header {
   position: sticky;
   top: 0;
@@ -60,6 +63,26 @@ body {
   background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
+  transition: padding 300ms ease, background 300ms ease;
+}
+
+.site-header.scrolled {
+  padding: 10px 12px;
+  background: transparent;
+  border-bottom: none;
+  backdrop-filter: none;
+}
+
+.site-header.scrolled .header-box {
+  width: calc(100% - 24px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(16, 17, 20, 0.10);
+  padding: 10px 20px;
+  transition: all 300ms ease;
 }
 
 .header-box {
@@ -85,7 +108,7 @@ body {
   letter-spacing: -0.01em;
   text-decoration: none;
   cursor: pointer;
-  color: #000;
+  color: black;
 }
 
 .register {

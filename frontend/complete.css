@@ -67,17 +67,39 @@ body{
   transform: translateY(-1px);
 }
 
-/* ---------- HEADER ---------- */
-.site-header{
+/* ============================================================
+   HEADER
+   ============================================================ */
+.site-header {
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(255,255,255,0.86);
+  background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
+  transition: padding 300ms ease, background 300ms ease;
 }
 
-.header-box{
+.site-header.scrolled {
+  padding: 10px 12px;
+  background: transparent;
+  border-bottom: none;
+  backdrop-filter: none;
+}
+
+.site-header.scrolled .header-box {
+  width: calc(100% - 24px);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(16, 17, 20, 0.10);
+  padding: 10px 20px;
+  transition: all 300ms ease;
+}
+
+.header-box {
   width: min(1100px, calc(100% - 32px));
   margin: 0 auto;
   padding: 14px 0;
@@ -86,15 +108,15 @@ body{
   justify-content: space-between;
 }
 
-.header-box-left{
+.header-box-left {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.brand-icon{ color: var(--blue); }
+.brand-icon { color: var(--blue); }
 
-.brand{
+.brand {
   font-weight: 600;
   font-size: 1.15rem;
   letter-spacing: -0.01em;
