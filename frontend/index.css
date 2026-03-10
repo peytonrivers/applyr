@@ -47,8 +47,6 @@ body {
 
 /* ============================================================
    SCROLL REVEAL
-   Elements with [data-reveal] start hidden and fade/slide in
-   when .visible is added by the IntersectionObserver in style.js
    ============================================================ */
 [data-reveal] {
   opacity: 0;
@@ -63,7 +61,6 @@ body {
   transform: translateY(0);
 }
 
-/* Staggered delay for grid children (stats, how-cards) */
 [data-reveal-group] > *:nth-child(1) { transition-delay:   0ms; }
 [data-reveal-group] > *:nth-child(2) { transition-delay:  80ms; }
 [data-reveal-group] > *:nth-child(3) { transition-delay: 160ms; }
@@ -92,7 +89,6 @@ body {
 .btn:hover  { transform: translateY(-1px); }
 .btn:active { transform: translateY(0); opacity: 0.96; }
 
-/* Primary (header Sign Up) */
 .btn-primary {
   background: var(--blue);
   color: white;
@@ -106,7 +102,6 @@ body {
   box-shadow: 0 14px 28px rgba(10, 102, 194, 0.26);
 }
 
-/* Google OAuth */
 .btn-google {
   background: rgba(255, 255, 255, 0.95);
   color: var(--text);
@@ -121,7 +116,6 @@ body {
   box-shadow: 0 14px 28px rgba(16, 17, 20, 0.10);
 }
 
-/* CTA width */
 .btn-cta {
   width: min(360px, 92vw);
   padding: 16px 22px;
@@ -135,7 +129,6 @@ body {
   margin-right: 10px;
 }
 
-/* CTA row wrapper */
 .cta-row {
   display: flex;
   align-items: center;
@@ -208,6 +201,81 @@ body {
   color: var(--muted);
   line-height: 1.55;
   font-size: clamp(1rem, 2.3vw, 1.35rem);
+}
+
+
+/* ============================================================
+   MARQUEE
+   ============================================================ */
+.marquee-section {
+  padding: 10px 0 28px;
+  text-align: center;
+  overflow: hidden;
+}
+
+img {
+  height: 40px;
+  width: 40px;
+}
+
+.marquee-label {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.marquee-track-wrapper {
+  overflow: hidden;
+  margin: 0 auto;
+  mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 15%,
+    black 85%,
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 15%,
+    black 85%,
+    transparent 100%
+  );
+}
+
+.marquee-track {
+  display: flex;
+  gap: 64px;
+  width: max-content;
+  animation: marquee-scroll 12s linear infinite;
+}
+
+.marquee-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 1rem;
+  white-space: nowrap;
+  padding: 6px 0;
+}
+
+.marquee-item svg {
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
 }
 
 
@@ -464,7 +532,6 @@ body {
    ============================================================ */
 @media (max-width: 720px) {
 
-  /* Hero */
   .hero { padding: 72px 0 60px; }
 
   .hero-title {
@@ -488,7 +555,6 @@ body {
     font-size: 1.1rem;
   }
 
-  /* Stats — keep 3 columns */
   .stats { padding: 52px 0 44px; }
 
   .stats-grid {
@@ -508,7 +574,6 @@ body {
     line-height: 1.35;
   }
 
-  /* How it works */
   .how { padding: 64px 0 72px; }
 
   .section-title {
@@ -537,7 +602,6 @@ body {
     max-width: 44ch;
   }
 
-  /* Waitlist */
   .waitlist { padding: 80px 0 80px; }
 
   .waitlist-title {
@@ -552,10 +616,8 @@ body {
 
   .trust-row { margin-top: 24px; }
 
-  /* Footer */
   .footer { padding: 44px 0 48px; }
 
-  /* Utility */
   .break-desktop { display: none; }
   .break-mobile  { display: inline; }
 }
