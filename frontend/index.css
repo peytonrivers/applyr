@@ -555,23 +555,26 @@ img {
     font-size: 1.1rem;
   }
 
-  .stats { padding: 52px 0 44px; }
+  /* Stats — vertical stack */
+  .stats { padding: 36px 0 28px; }
 
   .stats-grid {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr;
     gap: 0;
+    max-width: 320px;
+    margin: 0 auto;
   }
 
-  .stat { padding: 20px 6px; }
+
 
   .stat-value {
-    font-size: clamp(1.8rem, 7vw, 2.6rem);
+    font-size: clamp(2.6rem, 10vw, 3.2rem);
     margin-bottom: 6px;
   }
 
   .stat-label {
-    font-size: 0.78rem;
-    line-height: 1.35;
+    font-size: 1rem;
+    line-height: 1.4;
   }
 
   .how { padding: 64px 0 72px; }
@@ -656,8 +659,8 @@ img {
    RESPONSIVE — XS  (≤ 400px)
    ============================================================ */
 @media (max-width: 400px) {
-  .hero         { padding: 60px 0 52px; }
-  .hero-title   { font-size: 2.4rem; }
-  .stat-value   { font-size: 1.6rem; }
-  .stat-label   { font-size: 0.72rem; }
+  .hero       { padding: 60px 0 52px; }
+  .hero-title { font-size: 2.4rem; }
+  .stat-value { font-size: 2.2rem; }
+  .stat-label { font-size: 0.92rem; }
 }
