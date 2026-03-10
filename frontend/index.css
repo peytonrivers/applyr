@@ -153,13 +153,14 @@ body {
 }
 
 .site-header.scrolled {
-  padding: 10px 16px;
+  padding: 10px 12px;
   background: transparent;
   border-bottom: none;
   backdrop-filter: none;
 }
 
 .site-header.scrolled .header-box {
+  width: calc(100% - 24px);
   background: rgba(255, 255, 255, 0.88);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
