@@ -149,6 +149,25 @@ body {
   background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
+  transition: padding 300ms ease, background 300ms ease;
+}
+
+.site-header.scrolled {
+  padding: 10px 16px;
+  background: transparent;
+  border-bottom: none;
+  backdrop-filter: none;
+}
+
+.site-header.scrolled .header-box {
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 32px rgba(16, 17, 20, 0.10);
+  padding: 10px 20px;
+  transition: all 300ms ease;
 }
 
 .header-box {
