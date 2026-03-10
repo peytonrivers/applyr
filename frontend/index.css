@@ -556,7 +556,7 @@ img {
   }
 
   /* Stats — vertical stack */
-  .stats { padding: 36px 0 28px; }
+  .stat { padding: 32px 10px; }
 
   .stats-grid {
     grid-template-columns: 1fr;
@@ -565,15 +565,13 @@ img {
     margin: 0 auto;
   }
 
-
-
   .stat-value {
-    font-size: clamp(2.6rem, 10vw, 3.2rem);
-    margin-bottom: 6px;
-  }
+  font-size: clamp(3.2rem, 12vw, 4rem);
+  margin-bottom: 8px;
+}
 
   .stat-label {
-    font-size: 1rem;
+    font-size: 1.15rem;
     line-height: 1.4;
   }
 
@@ -663,4 +661,6 @@ img {
   .hero-title { font-size: 2.4rem; }
   .stat-value { font-size: 2.2rem; }
   .stat-label { font-size: 0.92rem; }
+  .stat-value { font-size: 2.8rem; }
+  .stat-label { font-size: 1.05rem; }
 }
