@@ -22,6 +22,7 @@ app.add_middleware(
     allow_origins=[
         "https://apply-r.com",
         "https://www.apply-r.com",
+        "https://applyr-one.vercel.app",
         "https://applyr-frontend.onrender.com",
         "https://applyr-12k0.onrender.com",
         "http://localhost:5500",
