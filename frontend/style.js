@@ -6,7 +6,7 @@
 
 (function () {
   const OBSERVER_OPTIONS = {
-    threshold: 0.12,
+    threshold: 0.06,
     rootMargin: '0px 0px -40px 0px',
   };
 
