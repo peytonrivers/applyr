@@ -5,9 +5,6 @@
    ============================================================ */
 
 (function () {
-  /* --- Observer config ---
-     threshold: how much of the element must be visible before it fires
-     rootMargin: fires slightly before the element fully enters (feels snappier) */
   const OBSERVER_OPTIONS = {
     threshold: 0.12,
     rootMargin: '0px 0px -40px 0px',
@@ -17,20 +14,17 @@
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
         entry.target.classList.add('visible');
-        // Stop watching once revealed — no need to re-animate
         observer.unobserve(entry.target);
       }
     });
   }, OBSERVER_OPTIONS);
 
-  /* Observe every element that has [data-reveal] */
   function initReveal() {
     document.querySelectorAll('[data-reveal]').forEach((el) => {
       observer.observe(el);
     });
   }
 
-  /* Run after DOM is ready */
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initReveal);
   } else {
@@ -39,12 +33,35 @@
 })();
 
 
+// ---------- API CONFIG ----------
+
+const API_URL = "https://api.apply-r.com";
+
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, { credentials: "include", ...options });
+
+  if (res.status === 401) {
+    const refreshRes = await fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    });
+
+    if (refreshRes.ok) {
+      return fetch(url, { credentials: "include", ...options });
+    } else {
+      window.location.href = "index.html";
+      return;
+    }
+  }
+
+  return res;
+}
+
+
 // ---------- SIGN UP BUTTONS (index.html only) ----------
-// Target only the specific sign up buttons, not every .btn on every page
 
-const googleAuthUrl = "https://applyr-12k0.onrender.com/auth/google";
+const googleAuthUrl = `${API_URL}/auth/google`;
 
-// Header "Sign Up" button
 const headerSignUpBtn = document.getElementById("headerSignUpBtn");
 if (headerSignUpBtn) {
   headerSignUpBtn.addEventListener("click", () => {
@@ -52,7 +69,6 @@ if (headerSignUpBtn) {
   });
 }
 
-// Hero "Sign Up with Google" button
 const heroSignUpBtn = document.getElementById("heroSignUpBtn");
 if (heroSignUpBtn) {
   heroSignUpBtn.addEventListener("click", () => {
@@ -60,12 +76,12 @@ if (heroSignUpBtn) {
   });
 }
 
-// Waitlist "Sign Up with Google" button
 document.querySelectorAll('.btn-signup').forEach((btn) => {
   btn.addEventListener('click', () => {
     window.location.href = googleAuthUrl;
   });
 });
+
 
 // ---------- SIGNUP FORM (signup.html) ----------
 
@@ -124,24 +140,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      const token = sessionStorage.getItem("token");
-
-      if (!token) {
-        window.location.href = "index.html";
-        return;
-      }
-
-      const response = await fetch("https://applyr-12k0.onrender.com/complete-signup", {
+      const response = await apiFetch(`${API_URL}/complete-signup`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ first_name, last_name, phone_number }),
       });
 
       if (response.ok) {
-        sessionStorage.removeItem("token");
         window.location.href = "complete.html";
       } else if (response.status === 401) {
         window.location.href = "index.html";
@@ -155,6 +160,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
+
+
+// ---------- HEADER SCROLL ----------
 
 const header = document.querySelector('.site-header');
 

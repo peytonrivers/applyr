@@ -113,14 +113,14 @@ async def retrieve_information(code: str, db: Session = Depends(get_db)):
         db.add(db_refresh_token)
         db.commit()
 
-        signup_complete_str = "true" if user.signup_complete else "false"
+        if user.signup_complete:
+            redirect_url = f"{FRONTEND_URL}/complete.html"
+        else:
+            redirect_url = f"{FRONTEND_URL}/signup.html"
 
-        response = RedirectResponse(
-            url=f"{FRONTEND_URL}/auth-callback.html?signup_complete={signup_complete_str}",
-            status_code=302,
-        )
-        response.set_cookie("access_token", access_token, httponly=True, samesite="lax", secure=True, max_age=1200)
-        response.set_cookie("refresh_token", refresh_token, httponly=True, samesite="lax", secure=True, max_age=604800)
+        response = RedirectResponse(url=redirect_url, status_code=302)
+        response.set_cookie("access_token", access_token, httponly=True, samesite="lax", secure=True, max_age=1200, domain=".apply-r.com")
+        response.set_cookie("refresh_token", refresh_token, httponly=True, samesite="lax", secure=True, max_age=604800, domain=".apply-r.com")
         return response
 
     except Exception as e:
@@ -166,6 +166,6 @@ async def refresh_tokens(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     response = JSONResponse({"message": "Tokens refreshed"})
-    response.set_cookie("access_token", new_access_token, httponly=True, samesite="lax", secure=True, max_age=1200)
-    response.set_cookie("refresh_token", new_refresh_token, httponly=True, samesite="lax", secure=True, max_age=604800)
+    response.set_cookie("access_token", new_access_token, httponly=True, samesite="lax", secure=True, max_age=1200, domain=".apply-r.com")
+    response.set_cookie("refresh_token", new_refresh_token, httponly=True, samesite="lax", secure=True, max_age=604800, domain=".apply-r.com")
     return response
