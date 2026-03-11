@@ -335,44 +335,4 @@ body{
 }
 
 .footer-inner{
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 10px;
-  text-align: center;
-}
-
-.footer-brand{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-icon.small{ color: var(--blue); }
-
-.footer-copy{
-  color: rgba(16,17,20,0.55);
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-/* ---------- Responsive (complete.html) ---------- */
-@media (max-width: 860px){
-  .next-grid{
-    grid-template-columns: 1fr;
-    gap: 14px;
-    text-align: left;
-  }
-}
-
-@media (max-width: 720px){
-  .complete-card{
-    padding: 40px 22px 30px;
-  }
-
-  .launch-card{
-    padding: 20px 18px 16px;
-  }
-}
-
+  d

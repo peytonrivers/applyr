@@ -1,5 +1,5 @@
 import sqlalchemy
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, Text, DateTime, func
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, Text, DateTime, func, ForeignKey
 from sqlalchemy.orm import sessionmaker, declarative_base
 import uuid
 from uuid import uuid4
@@ -35,12 +35,20 @@ class Users(Base):
     google_sub = Column(String, nullable=False, unique=True)
     email = Column(String, unique=True, nullable=False, index=True)
     profile_photo_url = Column(String, nullable=True)
-    first_name = Column(String, nullable=True,index=True)
+    first_name = Column(String, nullable=True, index=True)
     last_name = Column(String, nullable=True, index=True)
     phone_number = Column(String, nullable=True, index=True)
     signup_time = Column(DateTime, server_default=func.now(), nullable=True, index=True)
     signup_complete = Column(Boolean, nullable=True, server_default="false", index=True)
 
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    id = Column(String, primary_key=True, default=gen_random_id)
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False, index=True)
+    token = Column(String, unique=True, nullable=False)
+    is_valid = Column(Boolean, default=True, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
 
 
 def init_db():

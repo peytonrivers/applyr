@@ -279,47 +279,4 @@ body {
 
 .footer {
   padding: 34px 0 36px;
-  border-top: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(10px);
-}
-
-.footer-inner {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-direction: column;
-  gap: 10px;
-  text-align: center;
-}
-
-.footer-brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.brand-icon.small { color: var(--blue); }
-
-.footer-copy {
-  color: rgba(16, 17, 20, 0.55);
-  font-weight: 600;
-  font-size: 0.95rem;
-}
-
-@media (max-width: 720px) {
-  .register-card {
-    padding: 40px 22px 28px;
-  }
-
-  .grid-two {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-
-  .step-line {
-    width: 64px;
-  }
-}
-
-/* Scroll reveal base */
+  border-top: 1px s
