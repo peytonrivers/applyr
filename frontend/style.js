@@ -112,4 +112,56 @@ document.addEventListener("DOMContentLoaded", () => {
     const last_name = lastNameInput?.value.trim() || "";
     const phone_number = phoneInput?.value.replace(digitsOnly, "") || "";
 
-    if (!isValidName.test(first_name) || !isValidName
+    if (!isValidName.test(first_name) || !isValidName.test(last_name)) {
+      window.location.href = "error.html";
+      return;
+    }
+
+    if (!isValidPhone.test(phone_number)) {
+      phoneInput.setCustomValidity("Please enter a valid 10-digit phone number.");
+      phoneInput.reportValidity();
+      return;
+    }
+
+    try {
+      const token = sessionStorage.getItem("token");
+
+      if (!token) {
+        window.location.href = "index.html";
+        return;
+      }
+
+      const response = await fetch("https://applyr-12k0.onrender.com/complete-signup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`,
+        },
+        body: JSON.stringify({ first_name, last_name, phone_number }),
+      });
+
+      if (response.ok) {
+        sessionStorage.removeItem("token");
+        window.location.href = "complete.html";
+      } else if (response.status === 401) {
+        window.location.href = "index.html";
+      } else {
+        console.error("Signup error:", await response.json());
+        window.location.href = "error.html";
+      }
+    } catch (error) {
+      console.error("Request failed:", error);
+      window.location.href = "error.html";
+    }
+  });
+});
+
+const header = document.querySelector('.site-header');
+
+window.addEventListener('scroll', () => {
+  if (window.scrollY > 20) {
+    header.classList.add('scrolled');
+  } else {
+    header.classList.remove('scrolled');
+  }
+});
