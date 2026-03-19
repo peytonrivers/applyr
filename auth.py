@@ -121,7 +121,7 @@ async def retrieve_information(code: str, db: Session = Depends(get_db)):
         response = RedirectResponse(url=redirect_url, status_code=302)
         response.set_cookie("access_token", access_token, httponly=True, samesite="none", secure=True, max_age=1200)
         response.set_cookie("refresh_token", refresh_token, httponly=True, samesite="none", secure=True, max_age=604800)
-        return response
+        return RedirectResponse(url=redirect_url)
 
     except Exception as e:
         print(f"Auth error: {e}")
