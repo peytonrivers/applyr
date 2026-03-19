@@ -35,7 +35,7 @@
 
 // ---------- API CONFIG ----------
 
-const API_URL = "https://api.apply-r.com";
+const API_URL = "https://applyr-12k0.onrender.com";
 
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, { credentials: "include", ...options });
