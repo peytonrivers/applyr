@@ -117,7 +117,6 @@ async def retrieve_information(code: str, db: Session = Depends(get_db)):
             redirect_url = f"{FRONTEND_URL}/complete.html"
         else:
             redirect_url = f"{FRONTEND_URL}/signup.html"
-        return RedirectResponse(url=redirect_url)
         response = RedirectResponse(url=redirect_url, status_code=302)
         response.set_cookie("access_token", access_token, httponly=True, samesite="none", secure=True, max_age=1200)
         response.set_cookie("refresh_token", refresh_token, httponly=True, samesite="none", secure=True, max_age=604800)
