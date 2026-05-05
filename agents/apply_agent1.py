@@ -20,7 +20,7 @@ url = "https://www.allstate.jobs/job/23127059/product-engineer-java-spring-boot-
 
 def main():
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = p.chromium.launch(headless=False)
         page = browser.new_page()
         page.goto(url)
         print(page.title())
@@ -35,7 +35,7 @@ def main():
                 new_page.wait_for_load_state("networkidle")
                 break
         print(new_page.url)
-        new_page.wait_for_timeout(2000)
+        new_page.wait_for_timeout(5000)
         link1 = new_page.locator("a").all()
         for l in link1:
             text = l.text_content().lower().strip()
@@ -43,12 +43,43 @@ def main():
         button = new_page.locator("button").all()
         for b in button:
             text = b.text_content().lower().strip()
+            print(text)
             if "accept" in text:
                 b.click()
                 break
-            print(text)
         link2 = new_page.locator("a").all()
         for l in link2:
             text = l.text_content().lower().strip()
+            print(text)
             if "apply" in text:
-                l.click
+                l.click()
+                break
+        print(new_page.url)
+        new_page.wait_for_load_state("networkidle")
+        new_page.wait_for_timeout(5000)
+        label = new_page.locator("label").locator("span").all()
+        for l in label:
+            text = l.text_content()
+            print(text)
+        button = new_page.locator("button").all()
+        i = 0
+        for b in button:
+            text = b.text_content().lower()
+            if "sign in" in text:
+                if i == 0:
+                    i += 1
+                    continue
+                b.click()
+                break
+            print(text)
+                
+        print(new_page.url)
+        new_page.wait_for_timeout(5000)
+        label = new_page.locator("label").locator("span").all()
+        print("-------")
+        for l in label:
+            text = l.text_content().lower()
+            print(text)
+        browser.close()
+
+main()
