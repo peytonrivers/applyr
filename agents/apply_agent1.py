@@ -75,12 +75,96 @@ def main():
                 
         print(new_page.url)
         new_page.wait_for_timeout(5000)
-        label = new_page.locator("label").locator("span").all()
+        label = new_page.locator("label").all()
+        input = new_page.locator("input").all()
         print("-------")
-        for l in label:
-            text = l.text_content().lower()
+        robot_words = ["robot only"]
+        fields = []
+        input_map = {}
+        submit = new_page.locator('[data-automation-id="click_filter"][aria-label="Sign In"]')
+        span = new_page.locator("label").locator("span").all()
+        for s in span:
+            text = s.text_content().strip()
+            if text in robot_words:
+                continue
             print(text)
+
+        input = new_page.locator("input").all()
+        for i in input:
+            input_id = i.get_attribute("id")
+            types = i.get_attribute("type")
+            if not input_id:
+                continue
+            if len(input_id) > 15:
+                continue
+            update = {
+                "question": None,
+                "type": types,
+                "input_id": input_id
+            }
+            fields.append(update)
+
+        label = new_page.locator("label").all()
+        for l in label:
+            input_id = l.get_attribute("for")
+            text = l.text_content().strip()
+            if not input_id:
+                continue
+            if len(input_id) > 15:
+                continue
+            for field in fields:
+                if field["input_id"] == input_id:
+                    field["question"] = text
+                    break
+
+        new_page.wait_for_timeout(5000)
+        new_page.locator(f"#{fields[0]['input_id']}").fill("peytonrivers716@gmail.com")
+        new_page.locator(f"#{fields[1]['input_id']}").fill("Bprivers1!")
+        submit.click()
+        new_page.wait_for_timeout(5000)
+        print(fields)
+        step_label = new_page.locator('[aria-live="polite"]:has-text("current step")').text_content().strip()
+        print(step_label)  # "current step 1 of 5"
+
+        current, total = step_label.lower().replace("current step ", "").split(" of ")
+        current = int(current)
+        total = int(total)
+
+        input = new_page.locator("input").all()
+        field1 = []
+        for i in input:
+            input_id = i.get_attribute("id")
+            print(input_id)
+            type = i.get_attribute("type")
+            first_letter = input_id[0]
+            print(first_letter)
+            if not input_id:
+                continue
+            if first_letter.isdigit():
+                continue
+            update = {
+                "question": None,
+                "type": type,
+                "input_id": input_id
+            }
+            field1.append(update)
+
+        label = new_page.locator("label").all()
+        for l in label:
+            text = l.text_content().strip()
+            input_id = l.get_attribute("for")
+            if not input_id:
+                continue
+            first_letter = input_id[0]
+            if first_letter.isdigit():
+                continue
+            for field in field1:
+                if field["input_id"] == input_id:
+                    field["question"] = text
+                    break
+            
+        print(field1)
         browser.close()
 
+       
 main()
-print("Hello World")
