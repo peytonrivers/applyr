@@ -15,6 +15,11 @@
 import asyncio
 from playwright.async_api import async_playwright, Playwright
 from playwright.sync_api import sync_playwright
+from playwright_stealth import stealth_sync
+
+import requests
+response = requests.get("http://localhost:9222/json")
+print(response.json())
 
 url = "https://www.allstate.jobs/job/23127059/product-engineer-java-spring-boot-w-full-stack-option-remote-il/?source=LinkedInJB&utm_source=LILimitedListings&source=linkedinjobpostings"
 
@@ -117,12 +122,15 @@ def main():
                     field["question"] = text
                     break
 
-        new_page.wait_for_timeout(5000)
+        new_page.wait_for_timeout(7000)
         new_page.locator(f"#{fields[0]['input_id']}").fill("peytonrivers716@gmail.com")
         new_page.locator(f"#{fields[1]['input_id']}").fill("Bprivers1!")
         submit.click()
-        new_page.wait_for_timeout(5000)
+        new_page.wait_for_load_state("networkidle")
+        new_page.wait_for_selector("input")
+        new_page.wait_for_timeout(10000)
         print(fields)
+        print(new_page.url)
         step_label = new_page.locator('[aria-live="polite"]:has-text("current step")').text_content().strip()
         print(step_label)  # "current step 1 of 5"
 
@@ -131,15 +139,16 @@ def main():
         total = int(total)
 
         input = new_page.locator("input").all()
+        print(input)
         field1 = []
         for i in input:
             input_id = i.get_attribute("id")
             print(input_id)
             type = i.get_attribute("type")
-            first_letter = input_id[0]
-            print(first_letter)
             if not input_id:
                 continue
+            first_letter = input_id[0]
+            print(first_letter)
             if first_letter.isdigit():
                 continue
             update = {
@@ -155,7 +164,9 @@ def main():
             input_id = l.get_attribute("for")
             if not input_id:
                 continue
+            print(input_id)
             first_letter = input_id[0]
+            print(first_letter)
             if first_letter.isdigit():
                 continue
             for field in field1:
@@ -164,7 +175,7 @@ def main():
                     break
             
         print(field1)
-        browser.close()
+        browser.disconnect()
 
-       
+this = "curl http://localhost:9222/json"
 main()
