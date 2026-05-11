@@ -15,16 +15,14 @@
 import asyncio
 from playwright.async_api import async_playwright, Playwright
 from playwright.sync_api import sync_playwright
-from playwright_stealth import stealth_sync
+from playwright_stealth import Stealth
 
-import requests
-response = requests.get("http://localhost:9222/json")
-print(response.json())
+
 
 url = "https://www.allstate.jobs/job/23127059/product-engineer-java-spring-boot-w-full-stack-option-remote-il/?source=LinkedInJB&utm_source=LILimitedListings&source=linkedinjobpostings"
 
 def main():
-    with sync_playwright() as p:
+    with Stealth().use_sync(sync_playwright()) as p:
         browser = p.chromium.launch(headless=False)
         page = browser.new_page()
         page.goto(url)
@@ -80,12 +78,8 @@ def main():
                 
         print(new_page.url)
         new_page.wait_for_timeout(5000)
-        label = new_page.locator("label").all()
-        input = new_page.locator("input").all()
-        print("-------")
         robot_words = ["robot only"]
         fields = []
-        input_map = {}
         submit = new_page.locator('[data-automation-id="click_filter"][aria-label="Sign In"]')
         span = new_page.locator("label").locator("span").all()
         for s in span:
@@ -132,7 +126,7 @@ def main():
         print(fields)
         print(new_page.url)
         step_label = new_page.locator('[aria-live="polite"]:has-text("current step")').text_content().strip()
-        print(step_label)  # "current step 1 of 5"
+        print(step_label)
 
         current, total = step_label.lower().replace("current step ", "").split(" of ")
         current = int(current)
@@ -175,7 +169,6 @@ def main():
                     break
             
         print(field1)
-        browser.disconnect()
+        browser.close()
 
-this = "curl http://localhost:9222/json"
 main()
