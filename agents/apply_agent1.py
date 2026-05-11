@@ -16,10 +16,10 @@ import asyncio
 from playwright.async_api import async_playwright, Playwright
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
+import random
 
 
-
-url = "https://www.allstate.jobs/job/23127059/product-engineer-java-spring-boot-w-full-stack-option-remote-il/?source=LinkedInJB&utm_source=LILimitedListings&source=linkedinjobpostings"
+url = "https://www.allstate.jobs/job/23201300/enterprise-software-developer-expert/?_gl=1*hzryeo*_ga*MTEyNjgxMzg5MS4xNzc4NDYzMjcw*_ga_E5RN65WV3V*czE3Nzg0NjMyNzAkbzEkZzAkdDE3Nzg0NjMyNzMkajU3JGwwJGgw"
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
@@ -117,8 +117,8 @@ def main():
                     break
 
         new_page.wait_for_timeout(7000)
-        new_page.locator(f"#{fields[0]['input_id']}").fill("peytonrivers716@gmail.com")
-        new_page.locator(f"#{fields[1]['input_id']}").fill("Bprivers1!")
+        new_page.locator(f"#{fields[0]['input_id']}").press_sequentially("peytonrivers716@gmail.com", delay=random.randint(100,200))
+        new_page.locator(f"#{fields[1]['input_id']}").press_sequentially("Bprivers1!", delay=random.randint(100,200))
         submit.click()
         new_page.wait_for_load_state("networkidle")
         new_page.wait_for_selector("input")
