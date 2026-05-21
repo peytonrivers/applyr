@@ -19,7 +19,7 @@ from playwright_stealth import Stealth
 import random
 
 
-url = "https://www.allstate.jobs/job/23201300/enterprise-software-developer-expert/?_gl=1*hzryeo*_ga*MTEyNjgxMzg5MS4xNzc4NDYzMjcw*_ga_E5RN65WV3V*czE3Nzg0NjMyNzAkbzEkZzAkdDE3Nzg0NjMyNzMkajU3JGwwJGgw"
+url = "https://www.allstate.jobs/job/23213905/-net-software-engineer-lead-consultant-lpi-lender-placed-insurance-tracking-remote/?_gl=1*18gc4vh*_ga*OTI2NTIyMTI3LjE3NzkzMTQxODk.*_ga_E5RN65WV3V*czE3NzkzMTQxODgkbzEkZzAkdDE3NzkzMTQxOTEkajU3JGwwJGgw"
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
@@ -147,6 +147,7 @@ def main():
                 continue
             update = {
                 "question": None,
+                "answer": None,
                 "type": type,
                 "input_id": input_id
             }
@@ -167,8 +168,69 @@ def main():
                 if field["input_id"] == input_id:
                     field["question"] = text
                     break
-            
         print(field1)
+        for field in field1:
+            if field['type'] == 'text':
+                new_page.locator(f"#{field['input_id']}").press_sequentially("Peyton", delay=random.randint(100,200))
+                field["answer"] = "Peyton"
+        print("-----------")
+        button = new_page.locator("button").all()
+        button_questions = []
+        for b in button:
+            dropdown = b.get_attribute("aria-haspopup")
+            print(dropdown)
+            if dropdown != "listbox" and dropdown != "true":
+                continue
+            button_id = b.get_attribute("id")
+            update = {
+                "question": None,
+                "answer": None,
+                "button_id": button_id
+            }
+            button_questions.append(update)
+        
+        label = new_page.locator("label").all()
+        for l in label:
+            button_id = l.get_attribute("for")
+            if not button_id:
+                continue
+            text = l.text_content()
+            for b in button_questions:
+                if b["button_id"] == button_id:
+                    b["question"] = text
+                    break
+
+        button_questions = [b for b in button_questions if b["question"] is not None]
+        print(button_questions)
+
+        for b in button:
+            text = b.text_content().strip()
+            print(text)
+            if text.lower() == "save and continue":
+                continue_id = b.get_attribute("data-automation-id")
+                break
+        print("----- continue id")
+        print(continue_id)
+
+        button_values = {
+            "country--country": "United States of America",
+            "address--countryRegion": "North Carolina",
+            "phoneNumber--phoneType": "Mobile"
+        }
+
+        for b in button_questions:
+            value = button_values.get(b["button_id"])
+            if not value:
+                continue
+            new_page.locator(f"#{b['button_id']}").click()
+            new_page.get_by_role("option", name=value, exact=True).click()
+            b["answer"] = value
+        new_page.locator(f'[data-automation-id="{continue_id}"]').click()
+        field1 = [f for f in field1 if f["question"] is not None]
+        print(field1)
+        print("------------")
+        print(button_questions)
+        new_page.wait_for_timeout(7000)
         browser.close()
 
 main()
