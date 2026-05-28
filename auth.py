@@ -6,7 +6,7 @@ from jose import jwt, JWTError
 from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
-from database import Users, RefreshToken, get_db
+from database.database import Users, RefreshToken, get_db
 from sqlalchemy.orm import Session
 
 router = APIRouter()
