@@ -10,6 +10,8 @@ from typing_extensions import TypedDict, Annotated
 import operator
 
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 openai_key = os.getenv("OPENAI_KEY")
 llm = ChatOpenAI(model="gpt-5.4-nano", temperature = 0.7, api_key=openai_key)
@@ -42,7 +44,7 @@ all_tools = llm.bind_tools(tools)
 class State(TypedDict):
     first_name: str
     last_name: str
-    messages: Annotated[list, add_messages]
+    messages: Annotated[list[AnyMessage], add_messages]
 
 
 def build_user_profile(state: State):
@@ -54,7 +56,7 @@ def build_user_profile(state: State):
 
 def convert_profile_context(state: State):
     text = f"User Profile:\n\tFirst Name: {state["first_name"]}\n\tLast Name: {state["last_name"]}"
-    state["messages"] = [SystemMessage(content=text)]
+    state["messages"] = [SystemMessage(content=text + "Make sure every answer is in plain text and the answers to the question have some type of personal connection to the user.")]
     return state
 
 def llm_call(state: State):
@@ -62,7 +64,6 @@ def llm_call(state: State):
     if isinstance(last_message, ToolMessage):
         response = all_tools.invoke(state["messages"])
         state["messages"].append(response)
-        print(state["messages"])
         return state
 
     user_input = input("What is your next question or break? ")
@@ -79,7 +80,6 @@ def should_continue(state: State):
         return "end"
     
     if last_ai_message.tool_calls:
-        print(state["messages"])
         return "tools"
 
     print(last_ai_message.content)
