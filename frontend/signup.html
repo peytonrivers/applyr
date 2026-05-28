@@ -33,9 +33,9 @@
         <!-- Step header (outside card, centered like figma) -->
         <div class="register-step">
           <div class="step-track" aria-hidden="true">
-            <div class="step-dot done">✓</div>
+            <div class="step-dot done">1</div>
             <div class="step-line"></div>
-            <div class="step-dot current">2</div>
+            <div class="step-dot current" id="step-2">2</div>
           </div>
           <div class="step-caption">Step 2 of 2</div>
         </div>
@@ -61,7 +61,20 @@
             <div class="field">
               <label class="field-label" for="phoneNumber">Phone Number</label>
               <input class="field-input field-input-square" id="phoneNumber" name="phoneNumber" type="tel" placeholder="(555) 123-4567" required />
-              <p class="field-help">We'll use this to send you important updates.</p>
+            </div>
+
+            <div class="field">
+              <label class="field-label">Are you a U.S. Citizen?</label>
+              <div style="display: flex; gap: 24px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                      <input type="radio" id="option1" name="us_citizen" value="yes">
+                      <label for="option1">Yes</label>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                      <input type="radio" id="option2" name="us_citizen" value="no">
+                      <label for="option2">No</label>
+                  </div>
+              </div>
             </div>
 
             <button class="btn btn-primary register-submit" type="submit">

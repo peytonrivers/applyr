@@ -145,6 +145,11 @@ body {
   color: #fff;
 }
 
+#step-2 {
+  background: white;
+  color: black;
+}
+
 .step-line {
   width: 92px;
   height: 4px;
