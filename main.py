@@ -4,7 +4,7 @@ from jose import JWTError, jwt
 from auth import router as auth_router
 from dotenv import load_dotenv
 import os
-from database import Users, get_db
+from database.database import Users, get_db
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
