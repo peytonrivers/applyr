@@ -90,6 +90,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const firstNameInput = document.getElementById("firstName");
   const lastNameInput = document.getElementById("lastName");
   const phoneInput = document.getElementById("phoneNumber");
+  const usCitizen = document.getElementsByName("usCitizen");
 
   if (!form) return;
 
@@ -129,13 +130,22 @@ document.addEventListener("DOMContentLoaded", () => {
     const phone_number = phoneInput?.value.replace(digitsOnly, "") || "";
 
     if (!isValidName.test(first_name) || !isValidName.test(last_name)) {
-      window.location.href = "error.html";
+      phoneInput.setCustomValidity("Please enter your name");
+      phoneInput.reportValidity();
       return;
     }
 
     if (!isValidPhone.test(phone_number)) {
       phoneInput.setCustomValidity("Please enter a valid 10-digit phone number.");
       phoneInput.reportValidity();
+      return;
+    }
+
+    const testUsCitizen = document.querySelector('input[name="usCitizen"]:checked');
+    const reportCitizen = document.querySelector('input[name="usCitizen"]');
+    if (!testUsCitizen) {
+      reportCitizen.setCustomValidity("Please click yes or no.");
+      reportCitizen.reportValidity();
       return;
     }
 
