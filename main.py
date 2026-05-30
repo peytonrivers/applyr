@@ -75,7 +75,6 @@ def complete_signup(
         user.first_name = data.first_name
         user.last_name = data.last_name
         user.phone_number = data.phone_number
-        user.signup_complete = True
         db.commit()
         db.refresh(user)
 
@@ -85,6 +84,31 @@ def complete_signup(
             "email": user.email,
         }
 
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+
+class LegalForm(BaseModel):
+    work_experience: list[dict]
+    school: list[dict]
+    resume: str
+    resume_text: str
+    cover_letter: str
+    cover_letter_text: str
+
+@app.post("complete-legal")
+def complete_legal(data: LegalForm, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    user = db.query(Users).filter(Users.user_id == user_id).first()
+    if not user:
+         raise HTTPException(status_code=404, detail="User not found")
+    try:
+        user.work_experience = data.work_experience
+        user.school = data.school
+        user.resume = data.resume
+        user.resume_text = data.resume_text
+        user.cover_letter = data.cover_letter
+        user.cover_letter_text = data.cover_letter_text
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

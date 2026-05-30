@@ -157,7 +157,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (response.ok) {
-        window.location.href = "complete.html";
+        window.location.href = "legal.html";
       } else if (response.status === 401) {
         window.location.href = "index.html";
       } else {
