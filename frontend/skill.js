@@ -183,3 +183,23 @@ window.addEventListener('scroll', () => {
     header.classList.remove('scrolled');
   }
 });
+
+
+// --------- Add Work Experience ------------- //
+function toggleWorkExp() {
+  const form = document.getElementById('workExpForm');
+  const btn = document.getElementById('addWorkExpBtn');
+  const isHidden = form.style.maxHeight === '0px' || form.style.maxHeight === '';
+
+  if (isHidden) {
+    form.style.maxHeight = '400px';
+    form.style.opacity = '1';
+    form.style.marginTop = '18px';
+    btn.textContent = '− Remove Work Experience';
+  } else {
+    form.style.maxHeight = '0';
+    form.style.opacity = '0';
+    form.style.marginTop = '0';
+    btn.textContent = '+ Add Work Experience';
+  }
+}
