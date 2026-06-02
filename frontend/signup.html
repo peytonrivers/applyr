@@ -30,7 +30,6 @@
     <section class="register">
       <div class="container">
 
-        <!-- Step header (outside card, centered like figma) -->
         <div class="register-step">
           <div class="step-track" aria-hidden="true">
             <div class="step-dot done">1</div>
@@ -40,45 +39,81 @@
           <div class="step-caption">Step 2 of 2</div>
         </div>
 
-        <!-- Main card -->
         <div class="register-card">
           <p class="register-title">Complete Your Profile</p>
           <p class="register-subtitle">Just a few more details to get you started</p>
 
           <form id="signupForm" class="register-form" autocomplete="on">
+
             <div class="grid-two">
               <div class="field">
                 <label class="field-label" for="firstName">First Name</label>
-                <input class="field-input field-input-square" id="firstName" name="firstName" type="text" placeholder="John" required />
+                <input
+                  class="field-input field-input-square"
+                  id="firstName"
+                  name="firstName"
+                  type="text"
+                  placeholder="John"
+                  required
+                />
               </div>
 
               <div class="field">
                 <label class="field-label" for="lastName">Last Name</label>
-                <input class="field-input field-input-square" id="lastName" name="lastName" type="text" placeholder="Doe" required />
+                <input
+                  class="field-input field-input-square"
+                  id="lastName"
+                  name="lastName"
+                  type="text"
+                  placeholder="Doe"
+                  required
+                />
               </div>
             </div>
 
             <div class="field">
               <label class="field-label" for="phoneNumber">Phone Number</label>
-              <input class="field-input field-input-square" id="phoneNumber" name="phoneNumber" type="tel" placeholder="(555) 123-4567" required />
+              <input
+                class="field-input field-input-square"
+                id="phoneNumber"
+                name="phoneNumber"
+                type="tel"
+                placeholder="(555) 123-4567"
+                required
+              />
             </div>
 
             <div class="field">
-              <label class="field-label">Are you a U.S. Citizen?</label>
-              <div style="display: flex; gap: 24px;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                      <input type="radio" id="option1" name="usCitizen" value="yes">
-                      <label for="option1">Yes</label>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                      <input type="radio" id="option2" name="usCitizen" value="no">
-                      <label for="option2">No</label>
-                  </div>
+              <label class="field-label">
+                Are you a U.S. Citizen?
+              </label>
+
+              <div style="display:flex; gap:24px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input
+                    type="radio"
+                    id="usCitizenYes"
+                    name="usCitizen"
+                    value="yes"
+                    required
+                  >
+                  <label for="usCitizenYes">Yes</label>
+                </div>
+
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input
+                    type="radio"
+                    id="usCitizenNo"
+                    name="usCitizen"
+                    value="no"
+                  >
+                  <label for="usCitizenNo">No</label>
+                </div>
               </div>
             </div>
 
             <button class="btn btn-primary register-submit" type="submit">
-              Complete Registration
+              Save & Continue
             </button>
 
             <div class="register-trust">
@@ -86,11 +121,13 @@
                 <span class="chip-check">✓</span>
                 <span>Secure &amp; Private</span>
               </div>
+
               <div class="trust-chip">
                 <span class="chip-check">✓</span>
                 <span>No Credit Card</span>
               </div>
             </div>
+
           </form>
         </div>
 
@@ -98,17 +135,15 @@
     </section>
   </main>
 
-  <!-- FOOTER -->
   <footer class="footer">
     <div class="container footer-inner">
       <div class="footer-brand">
-        <svg class="brand-icon small" xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 -960 960 960" width="22" fill="currentColor" aria-hidden="true">
-          <path d="M40-480v-80h80v80H40Zm800 0v-80h80v80h-80ZM40-640v-80h80v80H40Zm800 0v-80h80v80h-80ZM40-800v-80h80v80H40Zm160 320v-80h80v80h-80Zm480 0v-80h80v80h-80Zm160-320v-80h80v80h-80Zm-640 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80ZM473-40q-24 0-46-9t-39-26L184-280l33-34q14-14 34-19t40 0l69 20v-327q0-17 11.5-28.5T400-680q17 0 28.5 11.5T440-640v433l-98-28 103 103q6 6 13 9t15 3h167q33 0 56.5-23.5T720-200v-160q0-17 11.5-28.5T760-400q17 0 28.5 11.5T800-360v160q0 66-47 113T640-40H473Zm7-280v-160q0-17 11.5-28.5T520-520q17 0 28.5 11.5T560-480v160h-80Zm120 0v-120q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440v120h-80Zm40 200H445h195Z"/>
-        </svg>
         <span class="brand">ApplyR</span>
       </div>
 
-      <div class="footer-copy">© 2026 ApplyR. All rights reserved.</div>
+      <div class="footer-copy">
+        © 2026 ApplyR. All rights reserved.
+      </div>
     </div>
   </footer>
 

@@ -7,26 +7,26 @@
 (function () {
   const OBSERVER_OPTIONS = {
     threshold: 0.06,
-    rootMargin: '0px 0px -40px 0px',
+    rootMargin: "0px 0px -40px 0px",
   };
 
   const observer = new IntersectionObserver((entries) => {
     entries.forEach((entry) => {
       if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
+        entry.target.classList.add("visible");
         observer.unobserve(entry.target);
       }
     });
   }, OBSERVER_OPTIONS);
 
   function initReveal() {
-    document.querySelectorAll('[data-reveal]').forEach((el) => {
+    document.querySelectorAll("[data-reveal]").forEach((el) => {
       observer.observe(el);
     });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initReveal);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initReveal);
   } else {
     initReveal();
   }
@@ -58,7 +58,7 @@ async function apiFetch(url, options = {}) {
 }
 
 
-// ---------- SIGN UP BUTTONS (index.html only) ----------
+// ---------- SIGN UP BUTTONS ----------
 
 const googleAuthUrl = `${API_URL}/auth/google`;
 
@@ -76,21 +76,20 @@ if (heroSignUpBtn) {
   });
 }
 
-document.querySelectorAll('.btn-signup').forEach((btn) => {
-  btn.addEventListener('click', () => {
+document.querySelectorAll(".btn-signup").forEach((btn) => {
+  btn.addEventListener("click", () => {
     window.location.href = googleAuthUrl;
   });
 });
 
 
-// ---------- SIGNUP FORM (signup.html) ----------
+// ---------- SIGNUP FORM ----------
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("signupForm");
   const firstNameInput = document.getElementById("firstName");
   const lastNameInput = document.getElementById("lastName");
   const phoneInput = document.getElementById("phoneNumber");
-  const usCitizen = document.getElementsByName("usCitizen");
 
   if (!form) return;
 
@@ -101,7 +100,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   [firstNameInput, lastNameInput].forEach((input) => {
     if (!input) return;
+
     input.addEventListener("input", () => {
+      input.setCustomValidity("");
       input.value = input.value.replace(lettersOnly, "");
     });
   });
@@ -109,8 +110,10 @@ document.addEventListener("DOMContentLoaded", () => {
   if (phoneInput) {
     phoneInput.addEventListener("input", () => {
       phoneInput.setCustomValidity("");
+
       const digits = phoneInput.value.replace(digitsOnly, "").slice(0, 10);
       let formatted = "";
+
       if (digits.length <= 3) {
         formatted = digits.length ? `(${digits}` : "";
       } else if (digits.length <= 6) {
@@ -118,6 +121,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         formatted = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
       }
+
       phoneInput.value = formatted;
     });
   }
@@ -125,13 +129,24 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    const first_name = firstNameInput?.value.trim() || "";
-    const last_name = lastNameInput?.value.trim() || "";
-    const phone_number = phoneInput?.value.replace(digitsOnly, "") || "";
+    if (!form.reportValidity()) {
+      return;
+    }
 
-    if (!isValidName.test(first_name) || !isValidName.test(last_name)) {
-      phoneInput.setCustomValidity("Please enter your name");
-      phoneInput.reportValidity();
+    const first_name = firstNameInput.value.trim();
+    const last_name = lastNameInput.value.trim();
+    const phone_number = phoneInput.value.replace(digitsOnly, "");
+    const us_citizen = document.querySelector('input[name="usCitizen"]:checked').value;
+
+    if (!isValidName.test(first_name)) {
+      firstNameInput.setCustomValidity("Please enter a valid first name.");
+      firstNameInput.reportValidity();
+      return;
+    }
+
+    if (!isValidName.test(last_name)) {
+      lastNameInput.setCustomValidity("Please enter a valid last name.");
+      lastNameInput.reportValidity();
       return;
     }
 
@@ -141,19 +156,16 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    const testUsCitizen = document.querySelector('input[name="usCitizen"]:checked');
-    const reportCitizen = document.querySelector('input[name="usCitizen"]');
-    if (!testUsCitizen) {
-      reportCitizen.setCustomValidity("Please click yes or no.");
-      reportCitizen.reportValidity();
-      return;
-    }
-
     try {
       const response = await apiFetch(`${API_URL}/complete-signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ first_name, last_name, phone_number }),
+        body: JSON.stringify({
+          first_name,
+          last_name,
+          phone_number,
+          us_citizen,
+        }),
       });
 
       if (response.ok) {
@@ -174,12 +186,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // ---------- HEADER SCROLL ----------
 
-const header = document.querySelector('.site-header');
+const header = document.querySelector(".site-header");
 
-window.addEventListener('scroll', () => {
-  if (window.scrollY > 20) {
-    header.classList.add('scrolled');
-  } else {
-    header.classList.remove('scrolled');
-  }
-});
+if (header) {
+  window.addEventListener("scroll", () => {
+    if (window.scrollY > 20) {
+      header.classList.add("scrolled");
+    } else {
+      header.classList.remove("scrolled");
+    }
+  });
+}
