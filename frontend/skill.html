@@ -3,20 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ApplyR • Complete Registration</title>
+  <title>ApplyR • Tell Us About You</title>
   <link rel="stylesheet" href="skill.css" />
 </head>
 
 <body>
-  <!-- HEADER -->
   <header class="site-header">
     <div class="header-box">
       <div class="header-box-left">
-        <a href="index.html" aria-label="ApplyR home">
-          <svg class="brand-icon" xmlns="http://www.w3.org/2000/svg" height="44" viewBox="0 -960 960 960" width="44" fill="currentColor" aria-hidden="true">
-            <path d="M40-480v-80h80v80H40Zm800 0v-80h80v80h-80ZM40-640v-80h80v80H40Zm800 0v-80h80v80h-80ZM40-800v-80h80v80H40Zm160 320v-80h80v80h-80Zm480 0v-80h80v80h-80Zm160-320v-80h80v80h-80Zm-640 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80ZM473-40q-24 0-46-9t-39-26L184-280l33-34q14-14 34-19t40 0l69 20v-327q0-17 11.5-28.5T400-680q17 0 28.5 11.5T440-640v433l-98-28 103 103q6 6 13 9t15 3h167q33 0 56.5-23.5T720-200v-160q0-17 11.5-28.5T760-400q17 0 28.5 11.5T800-360v160q0 66-47 113T640-40H473Zm7-280v-160q0-17 11.5-28.5T520-520q17 0 28.5 11.5T560-480v160h-80Zm120 0v-120q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440v120h-80Zm40 200H445h195Z"/>
-          </svg>
-        </a>
         <a href="index.html" class="brand">ApplyR</a>
       </div>
 
@@ -29,89 +23,86 @@
   <main>
     <section class="register">
       <div class="container">
-
-        <!-- Step header (outside card, centered like figma) -->
-        <div class="register-step">
-          <div class="step-track" aria-hidden="true">
-            <div class="step-dot done">1</div>
-            <div class="step-line"></div>
-            <div class="step-dot current" id="step-2">2</div>
-          </div>
-          <div class="step-caption">Step 2 of 2</div>
-        </div>
-
-        <!-- Main card -->
         <div class="register-card">
-          <p class="register-title">Complete Your Profile</p>
-          <p class="register-subtitle">Just a few more details to get you started</p>
+          <p class="register-title">Tell Us About You</p>
+          <p class="register-subtitle">This helps match you with the right opportunities</p>
 
-          <form id="signupForm" class="register-form" autocomplete="on">
-            <div class="grid-two">
-              <div class="field">
-                <label class="field-label" for="firstName">First Name</label>
-                <input class="field-input field-input-square" id="firstName" name="firstName" type="text" placeholder="John" required />
+          <form id="skillForm" class="register-form" autocomplete="on">
+
+            <div id="work-experience-section">
+              <button type="button" class="btn btn-primary register-submit" id="show-work-experience">
+                Add Work Experience +
+              </button>
+
+              <div id="work-experience" class="hidden">
+                <div id="work-experience-container"></div>
+
+                <button type="button" id="continue-work-experience">
+                  + Add More Work Experience
+                </button>
               </div>
+            </div>
 
-              <div class="field">
-                <label class="field-label" for="lastName">Last Name</label>
-                <input class="field-input field-input-square" id="lastName" name="lastName" type="text" placeholder="Doe" required />
+            <div id="education-section">
+              <button type="button" class="btn btn-primary register-submit" id="show-education">
+                Add Education +
+              </button>
+
+              <div id="education" class="hidden">
+                <div id="education-container"></div>
+
+                <button type="button" id="continue-education">
+                  + Add More Education
+                </button>
               </div>
             </div>
 
             <div class="field">
-              <label class="field-label" for="phoneNumber">Phone Number</label>
-              <input class="field-input field-input-square" id="phoneNumber" name="phoneNumber" type="tel" placeholder="(555) 123-4567" required />
+              <label class="field-label" for="resume">Resume</label>
+              <label class="upload-box" for="resume">
+                <span id="resumeFileName">Upload your resume</span>
+                <span class="browse-pill">Browse</span>
+              </label>
+              <input class="file-input" type="file" id="resume" name="resume" accept=".pdf,.docx" required />
+              <p class="field-help">PDF ONLY Max 5MB.</p>
             </div>
 
             <div class="field">
-              <label class="field-label">Are you a U.S. Citizen?</label>
-              <div style="display: flex; gap: 24px;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                      <input type="radio" id="option1" name="usCitizen" value="yes">
-                      <label for="option1">Yes</label>
-                  </div>
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                      <input type="radio" id="option2" name="usCitizen" value="no">
-                      <label for="option2">No</label>
-                  </div>
-              </div>
+              <label class="field-label" for="coverLetter">Cover Letter</label>
+              <label class="upload-box" for="coverLetter">
+                <span id="coverLetterFileName">Upload your cover letter</span>
+                <span class="browse-pill">Browse</span>
+              </label>
+              <input class="file-input" type="file" id="coverLetter" name="cover_letter" accept=".pdf,.docx" required />
+              <p class="field-help">PDF or DOCX Max 5MB.</p>
             </div>
 
             <button class="btn btn-primary register-submit" type="submit">
-              Complete Registration
+              Save & Continue
             </button>
 
             <div class="register-trust">
               <div class="trust-chip">
-                <span class="chip-check">✓</span>
+                <span class="chip-lock">⌕</span>
                 <span>Secure &amp; Private</span>
               </div>
-              <div class="trust-chip">
-                <span class="chip-check">✓</span>
-                <span>No Credit Card</span>
-              </div>
             </div>
+
           </form>
         </div>
-
       </div>
     </section>
   </main>
 
-  <!-- FOOTER -->
   <footer class="footer">
     <div class="container footer-inner">
       <div class="footer-brand">
-        <svg class="brand-icon small" xmlns="http://www.w3.org/2000/svg" height="22" viewBox="0 -960 960 960" width="22" fill="currentColor" aria-hidden="true">
-          <path d="M40-480v-80h80v80H40Zm800 0v-80h80v80h-80ZM40-640v-80h80v80H40Zm800 0v-80h80v80h-80ZM40-800v-80h80v80H40Zm160 320v-80h80v80h-80Zm480 0v-80h80v80h-80Zm160-320v-80h80v80h-80Zm-640 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80Zm160 0v-80h80v80h-80ZM473-40q-24 0-46-9t-39-26L184-280l33-34q14-14 34-19t40 0l69 20v-327q0-17 11.5-28.5T400-680q17 0 28.5 11.5T440-640v433l-98-28 103 103q6 6 13 9t15 3h167q33 0 56.5-23.5T720-200v-160q0-17 11.5-28.5T760-400q17 0 28.5 11.5T800-360v160q0 66-47 113T640-40H473Zm7-280v-160q0-17 11.5-28.5T520-520q17 0 28.5 11.5T560-480v160h-80Zm120 0v-120q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440v120h-80Zm40 200H445h195Z"/>
-        </svg>
         <span class="brand">ApplyR</span>
       </div>
-
       <div class="footer-copy">© 2026 ApplyR. All rights reserved.</div>
     </div>
   </footer>
 
-  <script src="style.js" defer></script>
+  <script src="skill.js" defer></script>
 </body>
 </html>
