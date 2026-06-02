@@ -26,47 +26,45 @@ async function apiFetch(url, options = {}) {
   return res;
 }
 
+// Scroll header effect
 const header = document.querySelector(".site-header");
-
 if (header) {
   window.addEventListener("scroll", () => {
-    if (window.scrollY > 20) {
-      header.classList.add("scrolled");
-    } else {
-      header.classList.remove("scrolled");
-    }
+    header.classList.toggle("scrolled", window.scrollY > 20);
   });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("skillForm");
+  if (!form) return;
 
-  const resume = document.getElementById("resume");
-  const coverLetter = document.getElementById("coverLetter");
-
+  // File inputs
+  const resumeInput = document.getElementById("resume");
+  const coverLetterInput = document.getElementById("coverLetter");
   const resumeFileName = document.getElementById("resumeFileName");
   const coverLetterFileName = document.getElementById("coverLetterFileName");
 
+  // Work experience elements
   const showWorkButton = document.getElementById("show-work-experience");
   const workExperienceDiv = document.getElementById("work-experience");
   const workExperienceContainer = document.getElementById("work-experience-container");
   const continueWorkButton = document.getElementById("continue-work-experience");
 
+  // Education elements
   const showEducationButton = document.getElementById("show-education");
   const educationDiv = document.getElementById("education");
   const educationContainer = document.getElementById("education-container");
   const continueEducationButton = document.getElementById("continue-education");
 
-  const maxFileSize = 5 * 1024 * 1024;
-  const allowedExtensions = ["pdf", "doc", "docx"];
-
-  let workExperienceCount = 0;
+  const MAX_FILE_SIZE = 5 * 1024 * 1024;
+  const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx"];
   const MAX_WORK_EXPERIENCE = 7;
-
-  let educationCount = 0;
   const MAX_EDUCATION = 7;
 
-  if (!form) return;
+  let workExperienceCount = 0;
+  let educationCount = 0;
+
+  // ─── File helpers ───────────────────────────────────────────
 
   function showSelectedFile(input, label, fallbackText) {
     const file = input.files?.[0];
@@ -84,13 +82,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const extension = file.name.split(".").pop().toLowerCase();
 
-    if (!allowedExtensions.includes(extension)) {
+    if (!ALLOWED_EXTENSIONS.includes(extension)) {
       input.setCustomValidity("Please upload a PDF, DOC, or DOCX file.");
       input.reportValidity();
       return false;
     }
 
-    if (file.size > maxFileSize) {
+    if (file.size > MAX_FILE_SIZE) {
       input.setCustomValidity("File must be 5MB or smaller.");
       input.reportValidity();
       return false;
@@ -100,166 +98,159 @@ document.addEventListener("DOMContentLoaded", () => {
     return true;
   }
 
+  // ─── Card builders ──────────────────────────────────────────
+
   function createWorkExperience() {
     if (workExperienceCount >= MAX_WORK_EXPERIENCE) return;
 
-    const workDiv = document.createElement("div");
-    workDiv.className = "work-card";
-
-    workDiv.innerHTML = `
+    const card = document.createElement("div");
+    card.className = "work-card";
+    card.innerHTML = `
       <div class="field">
         <label>Company</label>
-        <input type="text" name="company" class="field-input" placeholder="Company">
+        <input type="text" name="company" class="field-input" placeholder="Google" />
       </div>
-
       <div class="field">
         <label>Position</label>
-        <input type="text" name="position" class="field-input" placeholder="Position">
+        <input type="text" name="position" class="field-input" placeholder="Software Engineer" />
       </div>
-
       <div class="field">
         <label>Start Date</label>
-        <input type="date" name="work_start_date" class="field-input">
+        <input type="date" name="work_start_date" class="field-input" />
       </div>
-
       <div class="field">
         <label>End Date</label>
-        <input type="date" name="work_end_date" class="field-input">
+        <input type="date" name="work_end_date" class="field-input" />
       </div>
     `;
 
-    workExperienceContainer.appendChild(workDiv);
+    workExperienceContainer.appendChild(card);
     workExperienceCount++;
-  }
-
-  function createEducation() {
-    if (educationCount >= MAX_EDUCATION) return;
-
-    const educationDivCard = document.createElement("div");
-    educationDivCard.className = "education-card";
-
-    educationDivCard.innerHTML = `
-      <div class="field">
-        <label>School</label>
-        <input type="text" name="school" class="field-input" placeholder="School">
-      </div>
-
-      <div class="field">
-        <label>Major</label>
-        <input type="text" name="major" class="field-input" placeholder="Major">
-      </div>
-
-      <div class="field">
-        <label>Start Date</label>
-        <input type="date" name="school_start_date" class="field-input">
-      </div>
-
-      <div class="field">
-        <label>End Date</label>
-        <input type="date" name="school_end_date" class="field-input">
-      </div>
-    `;
-
-    educationContainer.appendChild(educationDivCard);
-    educationCount++;
-  }
-
-  showWorkButton.addEventListener("click", () => {
-    workExperienceDiv.classList.remove("hidden");
-
-    if (workExperienceCount === 0) {
-      createWorkExperience();
-    }
-
-    showWorkButton.classList.add("hidden");
-  });
-
-  continueWorkButton.addEventListener("click", () => {
-    createWorkExperience();
 
     if (workExperienceCount >= MAX_WORK_EXPERIENCE) {
       continueWorkButton.disabled = true;
       continueWorkButton.textContent = "Maximum Work Experience Added";
     }
-  });
+  }
 
-  showEducationButton.addEventListener("click", () => {
-    educationDiv.classList.remove("hidden");
+  function createEducation() {
+    if (educationCount >= MAX_EDUCATION) return;
 
-    if (educationCount === 0) {
-      createEducation();
-    }
+    const card = document.createElement("div");
+    card.className = "education-card";
+    card.innerHTML = `
+      <div class="field">
+        <label>School</label>
+        <input type="text" name="school" class="field-input" placeholder="UNC Charlotte" />
+      </div>
+      <div class="field">
+        <label>Major</label>
+        <input type="text" name="major" class="field-input" placeholder="Computer Science" />
+      </div>
+      <div class="field">
+        <label>Start Date</label>
+        <input type="date" name="school_start_date" class="field-input" />
+      </div>
+      <div class="field">
+        <label>End Date</label>
+        <input type="date" name="school_end_date" class="field-input" />
+      </div>
+    `;
 
-    showEducationButton.classList.add("hidden");
-  });
-
-  continueEducationButton.addEventListener("click", () => {
-    createEducation();
+    educationContainer.appendChild(card);
+    educationCount++;
 
     if (educationCount >= MAX_EDUCATION) {
       continueEducationButton.disabled = true;
       continueEducationButton.textContent = "Maximum Education Added";
     }
+  }
+
+  // ─── Process functions ──────────────────────────────────────
+
+  function processWorkExperience() {
+    const results = [];
+
+    document.querySelectorAll(".work-card").forEach((card) => {
+      const company   = card.querySelector('[name="company"]')?.value.trim();
+      const position  = card.querySelector('[name="position"]')?.value.trim();
+      const startDate = card.querySelector('[name="work_start_date"]')?.value;
+      const endDate   = card.querySelector('[name="work_end_date"]')?.value;
+
+      // Only include the entry if at least one field is filled
+      if (company || position || startDate || endDate) {
+        results.push({ company, position, start_date: startDate, end_date: endDate });
+      }
+    });
+
+    return results;
+  }
+
+  function processEducation() {
+    const results = [];
+
+    document.querySelectorAll(".education-card").forEach((card) => {
+      const school    = card.querySelector('[name="school"]')?.value.trim();
+      const major     = card.querySelector('[name="major"]')?.value.trim();
+      const startDate = card.querySelector('[name="school_start_date"]')?.value;
+      const endDate   = card.querySelector('[name="school_end_date"]')?.value;
+
+      if (school || major || startDate || endDate) {
+        results.push({ school, major, start_date: startDate, end_date: endDate });
+      }
+    });
+
+    return results;
+  }
+
+  // ─── Button listeners ────────────────────────────────────────
+
+  showWorkButton.addEventListener("click", () => {
+    workExperienceDiv.classList.remove("hidden");
+    showWorkButton.classList.add("hidden");
+    if (workExperienceCount === 0) createWorkExperience();
   });
 
-  resume.addEventListener("change", () => {
-    showSelectedFile(resume, resumeFileName, "Upload your resume");
-    validateFile(resume, "resume");
+  continueWorkButton.addEventListener("click", () => {
+    createWorkExperience();
   });
 
-  coverLetter.addEventListener("change", () => {
-    showSelectedFile(coverLetter, coverLetterFileName, "Upload your cover letter");
-    validateFile(coverLetter, "cover letter");
+  showEducationButton.addEventListener("click", () => {
+    educationDiv.classList.remove("hidden");
+    showEducationButton.classList.add("hidden");
+    if (educationCount === 0) createEducation();
   });
+
+  continueEducationButton.addEventListener("click", () => {
+    createEducation();
+  });
+
+  resumeInput.addEventListener("change", () => {
+    showSelectedFile(resumeInput, resumeFileName, "Upload your resume");
+    validateFile(resumeInput, "resume");
+  });
+
+  coverLetterInput.addEventListener("change", () => {
+    showSelectedFile(coverLetterInput, coverLetterFileName, "Upload your cover letter");
+    validateFile(coverLetterInput, "cover letter");
+  });
+
+  // ─── Submit ──────────────────────────────────────────────────
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
 
-    if (!validateFile(resume, "resume")) return;
-    if (!validateFile(coverLetter, "cover letter")) return;
+    if (!validateFile(resumeInput, "resume")) return;
+    if (!validateFile(coverLetterInput, "cover letter")) return;
 
-    const workExperience = [];
-
-    document.querySelectorAll(".work-card").forEach((card) => {
-      const company = card.querySelector('input[name="company"]').value.trim();
-      const position = card.querySelector('input[name="position"]').value.trim();
-      const startDate = card.querySelector('input[name="work_start_date"]').value;
-      const endDate = card.querySelector('input[name="work_end_date"]').value;
-
-      if (company || position || startDate || endDate) {
-        workExperience.push({
-          company,
-          position,
-          start_date: startDate,
-          end_date: endDate,
-        });
-      }
-    });
-
-    const education = [];
-
-    document.querySelectorAll(".education-card").forEach((card) => {
-      const school = card.querySelector('input[name="school"]').value.trim();
-      const major = card.querySelector('input[name="major"]').value.trim();
-      const startDate = card.querySelector('input[name="school_start_date"]').value;
-      const endDate = card.querySelector('input[name="school_end_date"]').value;
-
-      if (school || major || startDate || endDate) {
-        education.push({
-          school,
-          major,
-          start_date: startDate,
-          end_date: endDate,
-        });
-      }
-    });
+    const workExperience = processWorkExperience();
+    const education = processEducation();
 
     const formData = new FormData();
-
     formData.append("work_experience", JSON.stringify(workExperience));
     formData.append("school", JSON.stringify(education));
-    formData.append("resume", resume.files[0]);
-    formData.append("cover_letter", coverLetter.files[0]);
+    formData.append("resume", resumeInput.files[0]);
+    formData.append("cover_letter", coverLetterInput.files[0]);
 
     try {
       const response = await apiFetch(`${API_URL}/complete-skill`, {

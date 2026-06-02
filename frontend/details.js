@@ -30,6 +30,11 @@ async function apiFetch(url, options = {}) {
 // ---------- SCROLL REVEAL ----------
 
 (function () {
+    const OBSERVER_OPTIONS = {
+        threshold: 0.06,
+        rootMargin: "0px 0px -40px 0px",
+    };
+
     const observer = new IntersectionObserver((entries) => {
         entries.forEach((entry) => {
             if (entry.isIntersecting) {
@@ -37,10 +42,7 @@ async function apiFetch(url, options = {}) {
                 observer.unobserve(entry.target);
             }
         });
-    }, {
-        threshold: 0.06,
-        rootMargin: "0px 0px -40px 0px"
-    });
+    }, OBSERVER_OPTIONS);
 
     function initReveal() {
         document.querySelectorAll("[data-reveal]").forEach((el) => {
@@ -76,46 +78,139 @@ window.addEventListener("scroll", () => {
 document.addEventListener("DOMContentLoaded", () => {
     const detailsForm = document.getElementById("details-form");
 
+    const countryInput = document.getElementById("country");
+    const stateInput = document.getElementById("state");
+    const cityInput = document.getElementById("city");
+    const zipcodeInput = document.getElementById("zip-code");
+    const disabilityInput = document.getElementById("disability");
+    const veteranInput = document.getElementById("veteran");
+    const ethnicityInput = document.getElementById("ethnicity");
+
     if (!detailsForm) return;
+
+    function clearValidityOnInput(input) {
+        if (!input) return;
+
+        input.addEventListener("input", () => {
+            input.setCustomValidity("");
+        });
+
+        input.addEventListener("change", () => {
+            input.setCustomValidity("");
+        });
+    }
+
+    [
+        countryInput,
+        stateInput,
+        cityInput,
+        zipcodeInput,
+        disabilityInput,
+        veteranInput,
+        ethnicityInput
+    ].forEach(clearValidityOnInput);
+
+    document.querySelectorAll('input[name="work-authorization"]').forEach((input) => {
+        input.addEventListener("change", () => {
+            input.setCustomValidity("");
+        });
+    });
+
+    document.querySelectorAll('input[name="gender"]').forEach((input) => {
+        input.addEventListener("change", () => {
+            input.setCustomValidity("");
+        });
+    });
 
     detailsForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const country = document.getElementById("country").value;
-        const state = document.getElementById("state").value;
-        const city = document.getElementById("city").value.trim();
-        const zipcode = document.getElementById("zip-code").value.trim();
+        const country = countryInput.value;
+        const state = stateInput.value;
+        const city = cityInput.value.trim();
+        const zipcode = zipcodeInput.value.trim();
+        const disability = disabilityInput.value;
+        const veteran = veteranInput.value;
+        const ethnicityValue = ethnicityInput.value;
 
         const authorizationInput = document.querySelector(
             'input[name="work-authorization"]:checked'
+        );
+
+        const authorizationReporter = document.querySelector(
+            'input[name="work-authorization"]'
         );
 
         const genderInput = document.querySelector(
             'input[name="gender"]:checked'
         );
 
-        const disability = document.getElementById("disability").value;
-        const veteran = document.getElementById("veteran").value;
-        const ethnicityValue = document.getElementById("ethnicity").value;
+        const genderReporter = document.querySelector(
+            'input[name="gender"]'
+        );
+
+        if (!country) {
+            countryInput.setCustomValidity("Please select your country.");
+            countryInput.reportValidity();
+            return;
+        }
+
+        if (!state) {
+            stateInput.setCustomValidity("Please select your state.");
+            stateInput.reportValidity();
+            return;
+        }
+
+        if (!city) {
+            cityInput.setCustomValidity("Please enter your city.");
+            cityInput.reportValidity();
+            return;
+        }
+
+        if (!zipcode) {
+            zipcodeInput.setCustomValidity("Please enter your zip code.");
+            zipcodeInput.reportValidity();
+            return;
+        }
 
         if (!authorizationInput) {
-            alert("Please select your work authorization.");
+            authorizationReporter.setCustomValidity("Please select yes or no.");
+            authorizationReporter.reportValidity();
+            return;
+        }
+
+        if (!disability) {
+            disabilityInput.setCustomValidity("Please select your disability status.");
+            disabilityInput.reportValidity();
+            return;
+        }
+
+        if (!veteran) {
+            veteranInput.setCustomValidity("Please select your veteran status.");
+            veteranInput.reportValidity();
             return;
         }
 
         if (!genderInput) {
-            alert("Please select your gender.");
+            genderReporter.setCustomValidity("Please select your gender.");
+            genderReporter.reportValidity();
+            return;
+        }
+
+        if (!ethnicityValue) {
+            ethnicityInput.setCustomValidity("Please select your ethnicity.");
+            ethnicityInput.reportValidity();
             return;
         }
 
         const detailsData = {
-            country: country,
-            state: state,
-            city: city,
-            zipcode: zipcode,
+            country,
+            state,
+            city,
+            zipcode,
             authorization: authorizationInput.value,
-            disability: disability,
-            veteran: veteran,
+            disability,
+            veteran,
             gender: genderInput.value,
             ethnicity: [ethnicityValue]
         };
@@ -131,14 +226,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
             if (!response) return;
 
-            const result = await response.json();
-
             if (response.ok) {
-                console.log("Details saved:", result);
-                window.location.href = "skill.html";
+                window.location.href = "complete.html";
+            } else if (response.status === 401) {
+                window.location.href = "index.html";
             } else {
-                console.error("Details error:", result);
-                alert(result.detail || "Something went wrong.");
+                console.error("Details error:", await response.json());
+                window.location.href = "error.html";
             }
 
         } catch (error) {

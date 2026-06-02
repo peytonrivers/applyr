@@ -34,15 +34,28 @@ body {
   align-items: center;
   justify-content: center;
   transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease, filter 160ms ease;
+  user-select: none;
 }
 
 .btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); opacity: 0.96; }
 
 .btn-primary {
   background: var(--blue);
   color: #fff;
   box-shadow: 0 10px 22px rgba(10, 102, 194, 0.22);
+  padding: 10px 16px;
+  font-size: 0.95rem;
 }
+
+.btn-primary:hover {
+  filter: brightness(0.98);
+  box-shadow: 0 14px 28px rgba(10, 102, 194, 0.26);
+}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
 
 .site-header {
   position: sticky;
