@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ApplyR Details</title>
+    <link rel="stylesheet" href="details.css">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="header-box">
+        <div class="header-box-left">
+            <span class="brand-icon">✓</span>
+            <a class="brand" href="index.html">ApplyR</a>
+        </div>
+    </div>
+</header>
+
+<main class="register">
+    <div class="container">
+
+        <div class="register-step">
+            <div class="step-track">
+                <div class="step-dot done">1</div>
+                <div class="step-line"></div>
+                <div class="step-dot current">2</div>
+                <div class="step-line"></div>
+                <div class="step-dot" id="step-3">3</div>
+            </div>
+            <p class="step-caption">Step 2 of 3</p>
+        </div>
+
+        <section class="register-card" data-reveal>
+            <h1 class="register-title">Complete Your Details</h1>
+            <p class="register-subtitle">
+                Add your location, work authorization, and applicant details.
+            </p>
+
+            <form id="details-form" class="register-form">
+
+                <div class="grid-two">
+                    <div class="field">
+                        <label class="field-label" for="country">Country</label>
+                        <select class="field-input" name="country" id="country" required>
+                            <option value="">Select a Country</option>
+                            <option value="United States">United States</option>
+                            <option value="Canada">Canada</option>
+                            <option value="Mexico">Mexico</option>
+                            <option value="United Kingdom">United Kingdom</option>
+                            <option value="Australia">Australia</option>
+                            <option value="Brazil">Brazil</option>
+                            <option value="China">China</option>
+                            <option value="France">France</option>
+                            <option value="Germany">Germany</option>
+                            <option value="India">India</option>
+                            <option value="Ireland">Ireland</option>
+                            <option value="Italy">Italy</option>
+                            <option value="Japan">Japan</option>
+                            <option value="Netherlands">Netherlands</option>
+                            <option value="New Zealand">New Zealand</option>
+                            <option value="Nigeria">Nigeria</option>
+                            <option value="South Korea">South Korea</option>
+                            <option value="Spain">Spain</option>
+                            <option value="Sweden">Sweden</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="state">State</label>
+                        <select class="field-input" name="state" id="state" required>
+                            <option value="">Select a State or Territory</option>
+                            <option value="Alabama">Alabama</option>
+                            <option value="Alaska">Alaska</option>
+                            <option value="Arizona">Arizona</option>
+                            <option value="Arkansas">Arkansas</option>
+                            <option value="California">California</option>
+                            <option value="Colorado">Colorado</option>
+                            <option value="Connecticut">Connecticut</option>
+                            <option value="Delaware">Delaware</option>
+                            <option value="District of Columbia">District of Columbia</option>
+                            <option value="Florida">Florida</option>
+                            <option value="Georgia">Georgia</option>
+                            <option value="Hawaii">Hawaii</option>
+                            <option value="Idaho">Idaho</option>
+                            <option value="Illinois">Illinois</option>
+                            <option value="Indiana">Indiana</option>
+                            <option value="Iowa">Iowa</option>
+                            <option value="Kansas">Kansas</option>
+                            <option value="Kentucky">Kentucky</option>
+                            <option value="Louisiana">Louisiana</option>
+                            <option value="Maine">Maine</option>
+                            <option value="Maryland">Maryland</option>
+                            <option value="Massachusetts">Massachusetts</option>
+                            <option value="Michigan">Michigan</option>
+                            <option value="Minnesota">Minnesota</option>
+                            <option value="Mississippi">Mississippi</option>
+                            <option value="Missouri">Missouri</option>
+                            <option value="Montana">Montana</option>
+                            <option value="Nebraska">Nebraska</option>
+                            <option value="Nevada">Nevada</option>
+                            <option value="New Hampshire">New Hampshire</option>
+                            <option value="New Jersey">New Jersey</option>
+                            <option value="New Mexico">New Mexico</option>
+                            <option value="New York">New York</option>
+                            <option value="North Carolina">North Carolina</option>
+                            <option value="North Dakota">North Dakota</option>
+                            <option value="Ohio">Ohio</option>
+                            <option value="Oklahoma">Oklahoma</option>
+                            <option value="Oregon">Oregon</option>
+                            <option value="Pennsylvania">Pennsylvania</option>
+                            <option value="Rhode Island">Rhode Island</option>
+                            <option value="South Carolina">South Carolina</option>
+                            <option value="South Dakota">South Dakota</option>
+                            <option value="Tennessee">Tennessee</option>
+                            <option value="Texas">Texas</option>
+                            <option value="Utah">Utah</option>
+                            <option value="Vermont">Vermont</option>
+                            <option value="Virginia">Virginia</option>
+                            <option value="Washington">Washington</option>
+                            <option value="West Virginia">West Virginia</option>
+                            <option value="Wisconsin">Wisconsin</option>
+                            <option value="Wyoming">Wyoming</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="grid-two">
+                    <div class="field">
+                        <label class="field-label" for="city">City</label>
+                        <input class="field-input" type="text" id="city" name="city" placeholder="Enter your city" required>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="zip-code">Zip Code</label>
+                        <input class="field-input" type="text" id="zip-code" name="zip-code" placeholder="Enter your zip code" required>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label">Are you authorized to work in the U.S.?</label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="work-authorization" value="Yes" required>
+                            Yes
+                        </label>
+
+                        <label>
+                            <input type="radio" name="work-authorization" value="No">
+                            No
+                        </label>
+                    </div>
+                </div>
+
+                <div class="grid-two">
+                    <div class="field">
+                        <label class="field-label" for="disability">Disability Status</label>
+                        <select class="field-input" name="disability" id="disability" required>
+                            <option value="">Select Disability Status</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                            <option value="I Prefer Not to Say">I Prefer Not to Say</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label class="field-label" for="veteran">Veteran Status</label>
+                        <select class="field-input" name="veteran" id="veteran" required>
+                            <option value="">Select Veteran Status</option>
+                            <option value="Yes">Yes</option>
+                            <option value="No">No</option>
+                            <option value="Protected Veteran">Protected Veteran</option>
+                            <option value="Recently Separated Veteran">Recently Separated Veteran</option>
+                            <option value="Disabled Veteran">Disabled Veteran</option>
+                            <option value="I Prefer Not to Say">I Prefer Not to Say</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label">Gender</label>
+                    <div class="radio-group">
+                        <label>
+                            <input type="radio" name="gender" value="Male" required>
+                            Male
+                        </label>
+
+                        <label>
+                            <input type="radio" name="gender" value="Female">
+                            Female
+                        </label>
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label class="field-label" for="ethnicity">Ethnicity</label>
+                    <select class="field-input" name="ethnicity" id="ethnicity" required>
+                        <option value="">Select Ethnicity</option>
+                        <option value="American Indian or Alaska Native">American Indian or Alaska Native</option>
+                        <option value="Asian">Asian</option>
+                        <option value="Black or African American">Black or African American</option>
+                        <option value="Hispanic or Latino">Hispanic or Latino</option>
+                        <option value="Native Hawaiian or Other Pacific Islander">Native Hawaiian or Other Pacific Islander</option>
+                        <option value="White">White</option>
+                        <option value="Two or More Races">Two or More Races</option>
+                        <option value="Other">Other</option>
+                        <option value="I Prefer Not to Say">I Prefer Not to Say</option>
+                    </select>
+                </div>
+
+                <button class="btn btn-primary register-submit" type="submit">
+                    Save & Continue
+                </button>
+
+            </form>
+        </section>
+    </div>
+</main>
+
+<footer class="footer">
+    <div class="footer-inner">
+        <div class="footer-brand">
+            <span class="brand-icon small">✓</span>
+            <strong>ApplyR</strong>
+        </div>
+        <p class="footer-copy">© 2026 ApplyR. All rights reserved.</p>
+    </div>
+</footer>
+
+<script src="details.js"></script>
+</body>
+</html>
