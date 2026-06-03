@@ -120,6 +120,44 @@ def extract_docx_text(file_bytes):
 
     return "\n".join(text)
 
+
+
+def extract_pdf_text(file_bytes: bytes) -> str:
+    pdf = fitz.open(stream=file_bytes, filetype="pdf")
+    text = ""
+
+    for page in pdf:
+        text += page.get_text()
+
+    pdf.close()
+    return text.strip()
+
+
+def extract_docx_text(file_bytes: bytes) -> str:
+    doc = Document(io.BytesIO(file_bytes))
+    text = []
+
+    for paragraph in doc.paragraphs:
+        text.append(paragraph.text)
+
+    return "\n".join(text).strip()
+
+
+def extract_text(file_bytes: bytes, filename: str) -> str:
+    filename = filename.lower()
+
+    if filename.endswith(".pdf"):
+        return extract_pdf_text(file_bytes)
+
+    if filename.endswith(".docx"):
+        return extract_docx_text(file_bytes)
+
+    raise HTTPException(
+        status_code=400,
+        detail="Only PDF and DOCX files are supported"
+    )
+
+
 @app.post("/complete-skill")
 async def complete_skill(
     work_experience: str | None = Form(None),
@@ -141,40 +179,28 @@ async def complete_skill(
         resume_bytes = await resume.read()
         cover_letter_bytes = await cover_letter.read()
 
-        resume_filename = resume.filename.lower()
-        cover_letter_filename = cover_letter.filename.lower()
-
-        if resume_filename.endswith(".pdf"):
-            resume_text = extract_pdf_text(resume_bytes)
-
-        elif resume_filename.endswith(".docx"):
-            resume_text = extract_docx_text(resume_bytes)
-
-        else:
-            raise HTTPException(status_code=400,detail="Only PDF and DOCX files are supported")
-
-        if cover_letter_filename.endswith(".pdf"):
-            cover_letter_text = extract_pdf_text(cover_letter_bytes)
-        
-        elif cover_letter_filename.endswith(".docx"):
-            cover_letter_text = extract_docx_text(cover_letter_bytes)
-
-        else:
-            raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported")
+        resume_text = extract_text(resume_bytes, resume.filename)
+        cover_letter_text = extract_text(cover_letter_bytes, cover_letter.filename)
 
         resume_path = f"{user_id}/resume/{resume.filename}"
         cover_letter_path = f"{user_id}/cover-letter/{cover_letter.filename}"
 
         supabase.storage.from_("user-files").upload(
-            resume_path,
-            resume_bytes,
-            {"content-type": resume.content_type}
+            path=resume_path,
+            file=resume_bytes,
+            file_options={
+                "content-type": resume.content_type,
+                "upsert": "true"
+            }
         )
 
         supabase.storage.from_("user-files").upload(
-            cover_letter_path,
-            cover_letter_bytes,
-            {"content-type": cover_letter.content_type}
+            path=cover_letter_path,
+            file=cover_letter_bytes,
+            file_options={
+                "content-type": cover_letter.content_type,
+                "upsert": "true"
+            }
         )
 
         user.work_experience = work_experience_data
@@ -189,7 +215,15 @@ async def complete_skill(
         db.commit()
         db.refresh(user)
 
-        return {"message": "Skill information saved successfully"}
+        return {
+            "message": "Skill information saved successfully",
+            "resume_path": resume_path,
+            "cover_letter_path": cover_letter_path
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
 
     except Exception as e:
         db.rollback()

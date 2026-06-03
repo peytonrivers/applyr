@@ -61,6 +61,42 @@ body {
    HEADER
    ============================================================ */
 
+.step-track {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.step-dot {
+  width: 44px;
+  height: 44px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  box-shadow: 0 14px 26px rgba(10, 102, 194, 0.14);
+  background: white;
+  color: black;
+}
+
+.step-dot.done,
+.step-dot.current {
+  background: var(--blue);
+  color: #fff;
+}
+
+.step-line {
+  width: 92px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(48, 138, 228, 0.55);
+}
+
+.step-caption {
+  color: rgba(16, 17, 20, 0.58);
+  font-weight: 600;
+}   
+
 .site-header {
   position: sticky;
   top: 0;
