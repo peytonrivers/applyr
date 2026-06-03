@@ -263,6 +263,7 @@ def process_details(
         user.veteran = data.veteran
         user.gender = data.gender
         user.ethnicity = data.ethnicity
+        user.signup_complete = True
 
         db.commit()
         db.refresh(user)
