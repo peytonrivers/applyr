@@ -56,11 +56,11 @@ class Users(Base):
     cover_letter_text = Column(Text, nullable=True)
 
     country = Column(String, nullable=True)
-    state = Column(String, nullable=True)
+    user_state = Column(String, nullable=True)
     city = Column(String, nullable=True)
     zipcode = Column(String, nullable=True)
 
-    authorization = Column(String, nullable=True)
+    us_work_authorization = Column(String, nullable=True)
     disability = Column(String, nullable=True)
     veteran = Column(String, nullable=True)
     gender = Column(String, nullable=True)

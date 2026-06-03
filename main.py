@@ -231,7 +231,7 @@ class DetailsForm(BaseModel):
     state: str
     city: str
     zipcode: str
-    authorization: str
+    us_authorization: str
     disability: str
     veteran: str
     gender: str
@@ -251,10 +251,10 @@ def process_details(
 
     try:
         user.country = data.country
-        user.state = data.state
+        user.user_state = data.state
         user.city = data.city
         user.zipcode = data.zipcode
-        user.authorization = data.authorization
+        user.us_work_authorization = data.us_authorization
         user.disability = data.disability
         user.veteran = data.veteran
         user.gender = data.gender

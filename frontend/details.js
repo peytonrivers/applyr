@@ -133,7 +133,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const veteran = veteranInput.value;
         const ethnicityValue = ethnicityInput.value;
 
-        const authorizationInput = document.querySelector(
+        const usAuthorizationInput = document.querySelector(
             'input[name="work-authorization"]:checked'
         );
 
@@ -173,7 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        if (!authorizationInput) {
+        if (!usAuthorizationInput) {
             authorizationReporter.setCustomValidity("Please select yes or no.");
             authorizationReporter.reportValidity();
             return;
@@ -208,7 +208,7 @@ document.addEventListener("DOMContentLoaded", () => {
             state,
             city,
             zipcode,
-            authorization: authorizationInput.value,
+            us_authorization: usAuthorizationInput.value,
             disability,
             veteran,
             gender: genderInput.value,
