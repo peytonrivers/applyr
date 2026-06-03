@@ -173,6 +173,10 @@ async def complete_skill(
     db: Session = Depends(get_db)
 ):
     user = db.query(Users).filter(Users.user_id == user_id).first()
+    print(work_experience)
+    print(school)
+    print(resume)
+    print(cover_letter)
 
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
