@@ -41,7 +41,7 @@ class Users(Base):
     last_name = Column(String, nullable=True, index=True)
     phone_number = Column(String, nullable=True, index=True)
 
-    us_citizen = Column(Boolean, nullable=True, index=True)
+    us_citizen = Column(String, nullable=True, index=True)
 
     signup_time = Column(DateTime, server_default=func.now(), nullable=True, index=True)
     signup_complete = Column(Boolean, nullable=True, server_default="false", index=True)
