@@ -95,6 +95,7 @@ def complete_signup(
         }
 
     except Exception as e:
+        print("COMPLETE SIGNUP ERROR:", repr(e))
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     
