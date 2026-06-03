@@ -190,19 +190,11 @@ async def complete_skill(
         supabase.storage.from_("user-files").upload(
             path=resume_path,
             file=resume_bytes,
-            file_options={
-                "contentType": resume.content_type,
-                "upsert": "true"
-            }
         )
 
         supabase.storage.from_("user-files").upload(
             path=cover_letter_path,
             file=cover_letter_bytes,
-            file_options={
-                "contentType": cover_letter.content_type,
-                "upsert": "true"
-            }
         )
 
         user.work_experience = work_experience_data
