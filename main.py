@@ -81,6 +81,7 @@ def complete_signup(
         raise HTTPException(status_code=404, detail="User not found")
 
     try:
+        print(data)
         user.first_name = data.first_name
         user.last_name = data.last_name
         user.phone_number = data.phone_number
