@@ -156,6 +156,13 @@ body {
   padding: 74px 0 92px;
 }
 
+.register-step {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  margin: 10px 0 22px;
+}
+
 .register-card {
   width: min(920px, 100%);
   margin: 0 auto;
