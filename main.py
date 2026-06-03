@@ -67,6 +67,7 @@ class SignupForm(BaseModel):
     first_name: str
     last_name: str
     phone_number: str
+    us_citizen: str
 
 
 @app.post("/complete-signup")
@@ -83,6 +84,7 @@ def complete_signup(
         user.first_name = data.first_name
         user.last_name = data.last_name
         user.phone_number = data.phone_number
+        user.us_citizen = data.us_citizen
         db.commit()
         db.refresh(user)
 
@@ -189,7 +191,7 @@ async def complete_skill(
             path=resume_path,
             file=resume_bytes,
             file_options={
-                "content-type": resume.content_type,
+                "contentType": resume.content_type,
                 "upsert": "true"
             }
         )
@@ -198,7 +200,7 @@ async def complete_skill(
             path=cover_letter_path,
             file=cover_letter_bytes,
             file_options={
-                "content-type": cover_letter.content_type,
+                "contentType": cover_letter.content_type,
                 "upsert": "true"
             }
         )

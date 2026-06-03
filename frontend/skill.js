@@ -292,12 +292,14 @@ document.addEventListener("DOMContentLoaded", () => {
       if (response.ok) {
         window.location.href = "details.html";
       } else {
-        console.error("Skill form error:", await response.text());
-        window.location.href = "error.html";
+        const errorText = await response.text()
+        console.error("Skill form error:", errorText);
+        alert(errorText)
       }
     } catch (error) {
-      console.error("Request failed:", error);
-      window.location.href = "error.html";
+      const errorText = await response.text()
+      console.error("Request failed:", errorText);
+      alert(errorText)
     }
   });
 });
