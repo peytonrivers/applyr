@@ -26,8 +26,8 @@ async function apiFetch(url, options = {}) {
   return res;
 }
 
-// Scroll header effect
 const header = document.querySelector(".site-header");
+
 if (header) {
   window.addEventListener("scroll", () => {
     header.classList.toggle("scrolled", window.scrollY > 20);
@@ -38,33 +38,30 @@ document.addEventListener("DOMContentLoaded", () => {
   const form = document.getElementById("skillForm");
   if (!form) return;
 
-  // File inputs
   const resumeInput = document.getElementById("resume");
   const coverLetterInput = document.getElementById("coverLetter");
+
   const resumeFileName = document.getElementById("resumeFileName");
   const coverLetterFileName = document.getElementById("coverLetterFileName");
 
-  // Work experience elements
   const showWorkButton = document.getElementById("show-work-experience");
   const workExperienceDiv = document.getElementById("work-experience");
   const workExperienceContainer = document.getElementById("work-experience-container");
   const continueWorkButton = document.getElementById("continue-work-experience");
 
-  // Education elements
   const showEducationButton = document.getElementById("show-education");
   const educationDiv = document.getElementById("education");
   const educationContainer = document.getElementById("education-container");
   const continueEducationButton = document.getElementById("continue-education");
 
   const MAX_FILE_SIZE = 5 * 1024 * 1024;
-  const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx"];
+  const ALLOWED_EXTENSIONS = ["pdf", "docx"];
+
   const MAX_WORK_EXPERIENCE = 7;
   const MAX_EDUCATION = 7;
 
   let workExperienceCount = 0;
   let educationCount = 0;
-
-  // ─── File helpers ───────────────────────────────────────────
 
   function showSelectedFile(input, label, fallbackText) {
     const file = input.files?.[0];
@@ -83,7 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const extension = file.name.split(".").pop().toLowerCase();
 
     if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      input.setCustomValidity("Please upload a PDF, DOC, or DOCX file.");
+      input.setCustomValidity("Please upload a PDF or DOCX file.");
       input.reportValidity();
       return false;
     }
@@ -98,26 +95,28 @@ document.addEventListener("DOMContentLoaded", () => {
     return true;
   }
 
-  // ─── Card builders ──────────────────────────────────────────
-
   function createWorkExperience() {
     if (workExperienceCount >= MAX_WORK_EXPERIENCE) return;
 
     const card = document.createElement("div");
     card.className = "work-card";
+
     card.innerHTML = `
       <div class="field">
         <label>Company</label>
         <input type="text" name="company" class="field-input" placeholder="Google" />
       </div>
+
       <div class="field">
         <label>Position</label>
         <input type="text" name="position" class="field-input" placeholder="Software Engineer" />
       </div>
+
       <div class="field">
         <label>Start Date</label>
         <input type="date" name="work_start_date" class="field-input" />
       </div>
+
       <div class="field">
         <label>End Date</label>
         <input type="date" name="work_end_date" class="field-input" />
@@ -138,19 +137,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const card = document.createElement("div");
     card.className = "education-card";
+
     card.innerHTML = `
       <div class="field">
         <label>School</label>
         <input type="text" name="school" class="field-input" placeholder="UNC Charlotte" />
       </div>
+
       <div class="field">
         <label>Major</label>
         <input type="text" name="major" class="field-input" placeholder="Computer Science" />
       </div>
+
       <div class="field">
         <label>Start Date</label>
         <input type="date" name="school_start_date" class="field-input" />
       </div>
+
       <div class="field">
         <label>End Date</label>
         <input type="date" name="school_end_date" class="field-input" />
@@ -166,20 +169,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ─── Process functions ──────────────────────────────────────
-
   function processWorkExperience() {
     const results = [];
 
     document.querySelectorAll(".work-card").forEach((card) => {
-      const company   = card.querySelector('[name="company"]')?.value.trim();
-      const position  = card.querySelector('[name="position"]')?.value.trim();
+      const company = card.querySelector('[name="company"]')?.value.trim();
+      const position = card.querySelector('[name="position"]')?.value.trim();
       const startDate = card.querySelector('[name="work_start_date"]')?.value;
-      const endDate   = card.querySelector('[name="work_end_date"]')?.value;
+      const endDate = card.querySelector('[name="work_end_date"]')?.value;
 
-      // Only include the entry if at least one field is filled
       if (company || position || startDate || endDate) {
-        results.push({ company, position, start_date: startDate, end_date: endDate });
+        results.push({
+          company,
+          position,
+          start_date: startDate,
+          end_date: endDate,
+        });
       }
     });
 
@@ -190,52 +195,75 @@ document.addEventListener("DOMContentLoaded", () => {
     const results = [];
 
     document.querySelectorAll(".education-card").forEach((card) => {
-      const school    = card.querySelector('[name="school"]')?.value.trim();
-      const major     = card.querySelector('[name="major"]')?.value.trim();
+      const school = card.querySelector('[name="school"]')?.value.trim();
+      const major = card.querySelector('[name="major"]')?.value.trim();
       const startDate = card.querySelector('[name="school_start_date"]')?.value;
-      const endDate   = card.querySelector('[name="school_end_date"]')?.value;
+      const endDate = card.querySelector('[name="school_end_date"]')?.value;
 
       if (school || major || startDate || endDate) {
-        results.push({ school, major, start_date: startDate, end_date: endDate });
+        results.push({
+          school,
+          major,
+          start_date: startDate,
+          end_date: endDate,
+        });
       }
     });
 
     return results;
   }
 
-  // ─── Button listeners ────────────────────────────────────────
+  if (showWorkButton) {
+    showWorkButton.addEventListener("click", () => {
+      workExperienceDiv.classList.remove("hidden");
+      showWorkButton.classList.add("hidden");
 
-  showWorkButton.addEventListener("click", () => {
-    workExperienceDiv.classList.remove("hidden");
-    showWorkButton.classList.add("hidden");
-    if (workExperienceCount === 0) createWorkExperience();
-  });
+      if (workExperienceCount === 0) {
+        createWorkExperience();
+      }
+    });
+  }
 
-  continueWorkButton.addEventListener("click", () => {
-    createWorkExperience();
-  });
+  if (continueWorkButton) {
+    continueWorkButton.addEventListener("click", () => {
+      createWorkExperience();
+    });
+  }
 
-  showEducationButton.addEventListener("click", () => {
-    educationDiv.classList.remove("hidden");
-    showEducationButton.classList.add("hidden");
-    if (educationCount === 0) createEducation();
-  });
+  if (showEducationButton) {
+    showEducationButton.addEventListener("click", () => {
+      educationDiv.classList.remove("hidden");
+      showEducationButton.classList.add("hidden");
 
-  continueEducationButton.addEventListener("click", () => {
-    createEducation();
-  });
+      if (educationCount === 0) {
+        createEducation();
+      }
+    });
+  }
 
-  resumeInput.addEventListener("change", () => {
-    showSelectedFile(resumeInput, resumeFileName, "Upload your resume");
-    validateFile(resumeInput, "resume");
-  });
+  if (continueEducationButton) {
+    continueEducationButton.addEventListener("click", () => {
+      createEducation();
+    });
+  }
 
-  coverLetterInput.addEventListener("change", () => {
-    showSelectedFile(coverLetterInput, coverLetterFileName, "Upload your cover letter");
-    validateFile(coverLetterInput, "cover letter");
-  });
+  if (resumeInput) {
+    resumeInput.addEventListener("change", () => {
+      showSelectedFile(resumeInput, resumeFileName, "Upload your resume");
+      validateFile(resumeInput, "resume");
+    });
+  }
 
-  // ─── Submit ──────────────────────────────────────────────────
+  if (coverLetterInput) {
+    coverLetterInput.addEventListener("change", () => {
+      showSelectedFile(
+        coverLetterInput,
+        coverLetterFileName,
+        "Upload your cover letter"
+      );
+      validateFile(coverLetterInput, "cover letter");
+    });
+  }
 
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -247,6 +275,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const education = processEducation();
 
     const formData = new FormData();
+
     formData.append("work_experience", JSON.stringify(workExperience));
     formData.append("school", JSON.stringify(education));
     formData.append("resume", resumeInput.files[0]);
