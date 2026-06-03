@@ -297,7 +297,6 @@ document.addEventListener("DOMContentLoaded", () => {
         alert(errorText)
       }
     } catch (error) {
-      const errorText = await response.text()
       console.error("Request failed:", errorText);
       alert(errorText)
     }
