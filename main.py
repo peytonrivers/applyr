@@ -8,6 +8,7 @@ from database.database import Users, get_db
 from database.storage import supabase
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+import traceback
 
 
 
@@ -217,11 +218,8 @@ async def complete_skill(
             "cover_letter_path": cover_letter_path
         }
 
-    except HTTPException:
-        db.rollback()
-        raise
-
     except Exception as e:
+        traceback.print_exc()
         db.rollback()
         raise HTTPException(
             status_code=500,
