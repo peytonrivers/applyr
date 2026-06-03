@@ -297,8 +297,8 @@ document.addEventListener("DOMContentLoaded", () => {
         alert(errorText)
       }
     } catch (error) {
-      console.error("Request failed:", errorText);
-      alert(errorText)
+      console.error("Request failed:", error);
+      alert(error.message)
     }
   });
 });
