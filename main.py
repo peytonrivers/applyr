@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 import traceback
 
 
-
+import pdfplumber
 import json
 import fitz  # PyMuPDF
 from docx import Document #Docx
@@ -100,53 +100,40 @@ def complete_signup(
         print("COMPLETE SIGNUP ERROR:", repr(e))
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    
 
+def extract_pdf_text(file_path: str) -> str:
+    text_parts = []
 
+    with pdfplumber.open(file_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text(
+                x_tolerance=2,
+                y_tolerance=3,
+                layout=True
+            )
+            if text:
+                text_parts.append(text)
 
+    return "\n\n".join(text_parts)
 
-def extract_pdf_text(file_bytes: bytes) -> str:
-    pdf = fitz.open(stream=file_bytes, filetype="pdf")
-    text = ""
+def extract_docx_text(file_path: str) -> str:
+    doc = Document(file_path)
+    parts = []
 
-    for page in pdf:
-        text += page.get_text()
+    for para in doc.paragraphs:
+        text = para.text.strip()
+        if text:
+            parts.append(text)
 
-    pdf.close()
-    return text.strip()
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = " | ".join(
+                cell.text.strip() for cell in row.cells if cell.text.strip()
+            )
+            if row_text:
+                parts.append(row_text)
 
-def extract_docx_text(file_bytes):
-    doc = Document(io.BytesIO(file_bytes))
-
-    text = []
-
-    for paragraph in doc.paragraphs:
-        text.append(paragraph.text)
-
-    return "\n".join(text)
-
-
-
-def extract_pdf_text(file_bytes: bytes) -> str:
-    pdf = fitz.open(stream=file_bytes, filetype="pdf")
-    text = ""
-
-    for page in pdf:
-        text += page.get_text()
-
-    pdf.close()
-    return text.strip()
-
-
-def extract_docx_text(file_bytes: bytes) -> str:
-    doc = Document(io.BytesIO(file_bytes))
-    text = []
-
-    for paragraph in doc.paragraphs:
-        text.append(paragraph.text)
-
-    return "\n".join(text).strip()
-
+    return "\n".join(parts)
 
 def extract_text(file_bytes: bytes, filename: str) -> str:
     filename = filename.lower()
