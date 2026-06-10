@@ -22,6 +22,7 @@ from state import ApplicationState, ClickAction
 
 from langchain_openai import ChatOpenAI
 
+import time
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -41,6 +42,9 @@ def front_page_elements(state: ApplicationState, page):
         context = browser.new_context()
         page = browser.new_page()
         page.goto(url)
+        time.sleep(5)
+        url1 = page.url
+        state["current_page"] = {"page": page, "url": url1, "context": context, "browser": browser}
 
         body_text = page.locator("body").inner_text()
 
@@ -122,11 +126,36 @@ Front Page:
 
     state["ai_decision"] = decision
 
+    print(state["ai_decision"])
     return state
 
 def click_page(state: ApplicationState):
-    page
-    clickables = page.locator("""a""")
+    page = state["current_page"]["page"]
+    print(page)
+    clickables = page.locator("""
+                              a,
+                              button,
+                              [type="submit"],
+                              [type="button"],
+                              [role="button"],
+                              [role="link"]
+                              """)
+    index = state["ai_decision"]["index_number"]
+    click = clickables.nth(index)
+    print(click)
+    try:
+        with page.expect_popup() as new_page:
+            click.click()
+        new_page = new_page.value
+        new_page.wait_for_load_state("networkidle")
+        state["current_page"]["page"] = new_page
+        state["current_page"]["url"] = new_page.url
+        return state
+    except Exception:
+        page.wait_for_load_state("networkidle")
+        state["current_page"]["page"] = page
+        state["current_page"]["url"] = page.url
+        return state
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
@@ -341,4 +370,6 @@ def main():
         browser.close()
 
 state = front_page_elements({}, url)
-print(front_page_decision(state))
+response = front_page_decision(state)
+print(response)
+print(click_page(response))
