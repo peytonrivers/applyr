@@ -17,9 +17,116 @@ from playwright.async_api import async_playwright, Playwright
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import random
+import json
+from state import ApplicationState, ClickAction
+
+from langchain_openai import ChatOpenAI
+
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
-url = "https://www.allstate.jobs/job/23213905/-net-software-engineer-lead-consultant-lpi-lender-placed-insurance-tracking-remote/?_gl=1*18gc4vh*_ga*OTI2NTIyMTI3LjE3NzkzMTQxODk.*_ga_E5RN65WV3V*czE3NzkzMTQxODgkbzEkZzAkdDE3NzkzMTQxOTEkajU3JGwwJGgw"
+
+openai_key = os.getenv("OPENAI_KEY")
+llm = ChatOpenAI(model="gpt-5.4-nano", temperature = 0.7, api_key=openai_key)
+structured_llm = llm.with_structured_output(ClickAction)
+
+url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
+
+def front_page_elements(state: ApplicationState, page):
+
+    with Stealth().use_sync(sync_playwright()) as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+        page = browser.new_page()
+        page.goto(url)
+
+        body_text = page.locator("body").inner_text()
+
+        clickables = page.locator(
+            """
+            a,
+            button,
+            [type="submit"],
+            [type="button"],
+            [role="button"],
+            [role="link"]
+            """
+        )
+
+        elements = []
+
+        elements.append({
+            "body_text": body_text
+        })
+
+        for i in range(clickables.count()):
+            click = clickables.nth(i)
+
+            elements.append({
+                "index": i,
+                "tag": click.evaluate("el => el.tagName.toLowerCase()"),
+                "text": (click.text_content() or "").strip(),
+                "type": click.get_attribute("type"),
+                "id": click.get_attribute("id"),
+                "name": click.get_attribute("name"),
+                "aria-label": click.get_attribute("aria-label"),
+                "href": click.get_attribute("href")
+            })
+
+        state["front_page"] = json.dumps(elements)
+
+        return state
+
+def front_page_decision(state: ApplicationState):
+
+    front_page = state["front_page"]
+
+    prompt = f"""
+You are an AI application helper.
+
+You will decide between these 3 options:
+
+1. "apply"
+- This is an application opening page that we need to click a tag to continue to the next page.
+
+2. "signup"
+- This page requires us to sign up, create an account, or log in before continuing.
+
+3. "error"
+- This is neither an application page nor a signup page and should be returned as an error.
+
+We will be following the ClickAction structure.
+
+If your choice is apply:
+{{"action": "apply", "index_number": 9, "reason": "this was the button with the link that goes to the application page and its text was 'Apply Now'"}}
+
+If your choice is signup:
+{{"action": "signup", "index_number": None, "reason": "none of the buttons contained text or links leading directly to an application page and the page requires account creation or login"}}
+
+If your choice is error:
+{{"action": "error", "index_number": None, "reason": "none of the page text indicated that this was an application page or a signup page"}}
+
+The reason can be anything you decide, but make sure it is logical and explains your decision.
+
+When choosing "apply", return the index_number of the clickable element that should be clicked.
+
+Here is the front page:
+
+Front Page:
+{front_page}
+"""
+
+    decision = structured_llm.invoke(prompt)
+
+    state["ai_decision"] = decision
+
+    return state
+
+def click_page(state: ApplicationState):
+    page
+    clickables = page.locator("""a""")
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
@@ -233,4 +340,5 @@ def main():
         new_page.wait_for_timeout(7000)
         browser.close()
 
-main()
+state = front_page_elements({}, url)
+print(front_page_decision(state))

@@ -16,8 +16,15 @@
 """
 
 from typing import TypedDict, Literal, Annotated
+from pydantic import BaseModel
 from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, HumanMessage, ToolMessage
+
+class ClickAction(TypedDict):
+    action: Literal["apply", "signup", "error"]
+    index_number: int | None
+    reason: str
+
 class ApplicationState(TypedDict):
 
     # ── User Identity ──────────────────────────────
@@ -68,8 +75,11 @@ class ApplicationState(TypedDict):
     verification_code: str | None
 
     # ── Routing ────────────────────────────────────
-    current_page_url: str | None
+    current_page: dict
     retry_count: int
+
+    front_page: str
+    ai_decision: ClickAction
 
     # ── Messages ───────────────────────────────────
     messages: Annotated[list[AnyMessage], add_messages]
