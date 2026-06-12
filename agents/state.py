@@ -20,6 +20,14 @@ from pydantic import BaseModel
 from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, HumanMessage, ToolMessage
 
+class MultipleQuestion(TypedDict):
+    questions: list[str] | None
+
+class AllElements(TypedDict):
+    question_list: list[int]
+    follow_through: int
+    follow_through_reason: str
+
 class ClickAction(TypedDict):
     action: Literal["apply", "signup", "error"]
     index_number: int | None
@@ -80,6 +88,7 @@ class ApplicationState(TypedDict):
 
     front_page: str
     ai_decision: ClickAction
+    all_elements: list[dict]
 
     # ── Messages ───────────────────────────────────
     messages: Annotated[list[AnyMessage], add_messages]

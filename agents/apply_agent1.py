@@ -18,7 +18,7 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import random
 import json
-from state import ApplicationState, ClickAction
+from state import ApplicationState, ClickAction, MultipleQuestion
 
 from langchain_openai import ChatOpenAI
 
@@ -32,10 +32,11 @@ load_dotenv()
 openai_key = os.getenv("OPENAI_KEY")
 llm = ChatOpenAI(model="gpt-5.4-nano", temperature = 0.7, api_key=openai_key)
 structured_llm = llm.with_structured_output(ClickAction)
+multiple_question_llm = llm.with_structured_output(MultipleQuestion)
 
 url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
 
-def front_page_elements(state: ApplicationState, page):
+def front_page_elements(state: ApplicationState, url):
 
     with Stealth().use_sync(sync_playwright()) as p:
         browser = p.chromium.launch(headless=False)
@@ -80,6 +81,8 @@ def front_page_elements(state: ApplicationState, page):
             })
 
         state["front_page"] = json.dumps(elements)
+        response = front_page_decision(state)
+        state = click_page(response)
 
         return state
 
@@ -131,7 +134,6 @@ Front Page:
 
 def click_page(state: ApplicationState):
     page = state["current_page"]["page"]
-    print(page)
     clickables = page.locator("""
                               a,
                               button,
@@ -142,7 +144,6 @@ def click_page(state: ApplicationState):
                               """)
     index = state["ai_decision"]["index_number"]
     click = clickables.nth(index)
-    print(click)
     try:
         with page.expect_popup() as new_page:
             click.click()
@@ -156,6 +157,358 @@ def click_page(state: ApplicationState):
         state["current_page"]["page"] = page
         state["current_page"]["url"] = page.url
         return state
+
+def grab_all_elements(state: ApplicationState):
+    page = state["current_page"]["page"]
+    clickables = page.locator("""a,button,input,[type="button"],[type="link"]""")
+    elements = []
+    for i in range(clickables.count()):
+        click = clickables.nth(i)
+        tag = click.evaluate("el => el.tagName.toLowerCase()")
+        type = click.get_attribute("type")
+        if type == "radio" or type == "checkbox":
+            continue
+        id = click.get_attribute("id") or None
+        text = click.text_content().strip() or ""
+        href = click.get_attribute("href")
+        label = page.locator(f'label[for="{id}"]') or None
+        name = click.get_attribute("name")
+        placeholder = click.get_attribute("placeholder")
+        data = {
+            "tag": tag,
+            "type": type,
+            "href": href,
+            "label": label,
+            "name": name,
+            "placeholder": placeholder
+            }
+        elements.append(data)
+    return state
+
+def get_all_elements(state: ApplicationState):
+    page = state["current_page"]["page"]
+    interactive_elements = (
+    # --- Native Interactive HTML Tags ---
+    "a[href], button, input"
+    
+    # --- Clickable/Interactive ARIA Roles ---
+    "[role='button'], [role='link'], "
+    "[role='switch'], [role='tab'], [role='menuitem'], [role='menuitemcheckbox'], "
+    "[role='menuitemradio'], [role='option'], [role='combobox'], [role='slider'], "
+    "[role='spinbutton'], [role='treeitem'], [role='gridcell']"
+    )
+    clickables = page.locator(interactive_elements)
+    all_elements = []
+    for i in range(clickables.count()):
+        click = clickables.nth(i)
+        input_type = click.get_attribute("type")
+        if input_type == "checkbox" or input_type == "radio":
+            continue
+        tag = click.evaluate("el => el.tagName.toLowerCase()")
+        index = i
+        element_id = click.get_attribute("id")
+        name = click.get_attribute("name")
+        placeholder = click.get_attribute("placeholder")
+        value = click.get_attribute("value")
+        text = click.text_content() or ""
+        href = click.get_attribute("href")
+        onclick = click.get_attribute("onclick")
+        label_text = ""
+        if element_id:
+            label = page.locator(f'[for="{element_id}"]') or None
+            if label.count() > 0:
+                label_text = label.first.text_content() or ""
+        data = {
+            "tag": tag,
+            "index": i,
+            "element_id": element_id,
+            "name": name,
+            "placeholder": placeholder,
+            "value": value,
+            "href": href,
+            "onclick": onclick,
+            "text": text,
+            "label_text": label_text
+        }
+        all_elements.append(data)
+    
+    state["all_elements"] = all_elements
+    return state
+
+def get_all_radio(state: ApplicationState):
+    page = state["current_page"]["page"]
+    clickables = page.locator("""[type="radio"], [role="radio"]""")
+    radio_elements = []
+    radio_names = []
+    for i in range(clickables.count()):
+        click = clickables.nth(i)
+        name = click.get_attribute("name")
+        if name in radio_names:
+            continue
+        radio_names.append(name)
+        current_radio = []
+        tag = click.evaluate("el => el.tagName.toLowerCase()")
+        index = i
+        element_id = click.get_attribute("id")
+        name = click.get_attribute("name")
+        placeholder = click.get_attribute("placeholder")
+        value = click.get_attribute("value")
+        text = click.text_content() or ""
+        href = click.get_attribute("href")
+        onclick = click.get_attribute("onclick")
+        label_text = ""
+        if element_id:
+            label = page.locator(f'[for="{element_id}"]') or None
+            if label.count() > 0:
+                label_text = label.first.text_content() or ""
+        data = {
+            "tag": tag,
+            "index": i,
+            "element_id": element_id,
+            "name": name,
+            "placeholder": placeholder,
+            "value": value,
+            "href": href,
+            "onclick": onclick,
+            "text": text,
+            "label_text": label_text
+        }
+        current_radio.append(data)
+        for l in range(clickables.count()):
+            if i == l:
+                continue
+            click2 = clickables.nth(l)
+            name2 = click2.get_attribute("name")
+            if name != name2:
+                continue
+            tag2 = click2.evaluate("el => el.tagName.toLowerCase()")
+            element_id2 = click2.get_attribute("id")
+            name2 = click2.get_attribute("name")
+            placeholder2 = click2.get_attribute("placeholder")
+            value2 = click2.get_attribute("value")
+            href2 = click2.get_attribute("href")
+            onclick2 = click2.get_attribute("onclick")
+            text2 = click2.text_content() or ""
+            label_text2 = ""
+            if element_id2:
+                label2 = page.locator(f'[type="{element_id2}"]')
+                if label2.count() > 0:
+                    label_text2 = label2.text_content() or ""
+            data2 = {
+                "tag": tag2,
+                "index": l,
+                "element_id": element_id2,
+                "name": name2,
+                "placeholder": placeholder2,
+                "value": value2,
+                "href": href2,
+                "onclick": onclick2,
+                "text": text2,
+                "label_text": label_text2
+            }
+            current_radio.append(data2)
+        radio_elements.append({"grouping": name, "question": None, "options": current_radio})
+
+
+    state["radio_elements"] = radio_elements
+    return state
+
+def ai_radio_elements(state: ApplicationState):
+    page = state["current_page"]["page"]
+    radio_elements = state["radio_elements"]
+
+    if not radio_elements:
+        return state
+
+    raw_text = page.locator("body").inner_text() or ""
+    body_text = raw_text.strip() or ""
+
+    prompt = f"""
+You are an AI Application Helper.
+
+Your job is to look at the body text of this page and match each radio grouping to the exact question from the page text.
+
+body_text:
+{json.dumps(body_text)}
+
+radio_elements:
+{json.dumps(radio_elements)}
+
+Rules:
+- The questions must be in the same exact order as the radio_elements list.
+- Do not reorder the questions.
+- Do not invent questions.
+- Use the exact question text from the body_text when possible.
+
+Example:
+radio_elements:
+[
+    {{"question": None, "grouping": "car", "options": [{{"label_text": "Honda"}}, {{"label_text": "Toyota"}}]}},
+    {{"question": None, "grouping": "plane", "options": [{{"label_text": "Delta"}}, {{"label_text": "American"}}]}}
+]
+
+Correct response:
+inside of the questions dictionary ["What car do you want?", "What plane do you like better?"]
+
+Incorrect response:
+["What plane do you like better?", "What car do you want?"]
+"""
+
+    response = multiple_question_llm.invoke(prompt)
+
+    for i in range(min(len(radio_elements), len(response["questions"]))):
+        radio_elements[i]["question"] = response["questions"][i]
+
+    state["radio_elements"] = radio_elements
+
+    return state
+
+def get_all_checkboxes(state: ApplicationState):
+    page = state["current_page"]["page"]
+    clickables = page.locator("""[type="checkbox"], [role="checkbox"]""")
+
+    checkbox_elements = []
+    checkbox_names = []
+
+    for i in range(clickables.count()):
+        click = clickables.nth(i)
+        name = click.get_attribute("name")
+
+        if name in checkbox_names:
+            continue
+
+        checkbox_names.append(name)
+        current_checkbox = []
+
+        tag = click.evaluate("el => el.tagName.toLowerCase()")
+        element_id = click.get_attribute("id")
+        name = click.get_attribute("name")
+        placeholder = click.get_attribute("placeholder")
+        value = click.get_attribute("value")
+        text = click.text_content() or ""
+        href = click.get_attribute("href")
+        onclick = click.get_attribute("onclick")
+
+        label_text = ""
+        if element_id:
+            label = page.locator(f'[for="{element_id}"]')
+            if label.count() > 0:
+                label_text = label.first.text_content() or ""
+
+        data = {
+            "tag": tag,
+            "index": i,
+            "element_id": element_id,
+            "name": name,
+            "placeholder": placeholder,
+            "value": value,
+            "href": href,
+            "onclick": onclick,
+            "text": text,
+            "label_text": label_text
+        }
+
+        current_checkbox.append(data)
+
+        for l in range(clickables.count()):
+            if i == l:
+                continue
+
+            click2 = clickables.nth(l)
+            name2 = click2.get_attribute("name")
+
+            if name != name2:
+                continue
+
+            tag2 = click2.evaluate("el => el.tagName.toLowerCase()")
+            element_id2 = click2.get_attribute("id")
+            name2 = click2.get_attribute("name")
+            placeholder2 = click2.get_attribute("placeholder")
+            value2 = click2.get_attribute("value")
+            href2 = click2.get_attribute("href")
+            onclick2 = click2.get_attribute("onclick")
+            text2 = click2.text_content() or ""
+
+            label_text2 = ""
+            if element_id2:
+                label2 = page.locator(f'[for="{element_id2}"]')
+                if label2.count() > 0:
+                    label_text2 = label2.first.text_content() or ""
+
+            data2 = {
+                "tag": tag2,
+                "index": l,
+                "element_id": element_id2,
+                "name": name2,
+                "placeholder": placeholder2,
+                "value": value2,
+                "href": href2,
+                "onclick": onclick2,
+                "text": text2,
+                "label_text": label_text2
+            }
+
+            current_checkbox.append(data2)
+
+        checkbox_elements.append({
+            "grouping": name,
+            "question": None,
+            "options": current_checkbox
+        })
+
+    state["checkbox_elements"] = checkbox_elements
+
+    return state
+
+def ai_checkbox_elements(state: ApplicationState):
+    page = state["current_page"]["page"]
+    checkbox_elements = state["checkbox_elements"]
+
+    if not checkbox_elements:
+        return state
+
+    raw_text = page.locator("body").inner_text() or ""
+    body_text = raw_text.strip() or ""
+
+    prompt = f"""
+You are an AI Application Helper.
+
+Your job is to look at the body text of this page and match each checkbox grouping to the exact question from the page text.
+
+body_text:
+{json.dumps(body_text)}
+
+checkbox_elements:
+{json.dumps(checkbox_elements)}
+
+Rules:
+- The questions must be in the same exact order as the checkbox_elements list.
+- Do not reorder the questions.
+- Do not invent questions.
+- Use the exact question text from the body_text when possible.
+
+Example:
+checkbox_elements:
+[
+    {{"question": None, "grouping": "skills", "options": [{{"label_text": "Python"}}, {{"label_text": "Java"}}]}},
+    {{"question": None, "grouping": "ethnicity", "options": [{{"label_text": "Hispanic or Latino"}}, {{"label_text": "Asian"}}]}}
+]
+
+Correct response:
+inside of the questions dictionary ["Which skills do you have?", "What is your ethnicity?"]
+
+Incorrect response:
+["What is your ethnicity?", "Which skills do you have?"]
+"""
+
+    response = multiple_question_llm.invoke(prompt)
+
+    for i in range(min(len(checkbox_elements), len(response["questions"]))):
+        checkbox_elements[i]["question"] = response["questions"][i]
+
+    state["checkbox_elements"] = checkbox_elements
+
+    return state
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
@@ -370,6 +723,6 @@ def main():
         browser.close()
 
 state = front_page_elements({}, url)
-response = front_page_decision(state)
-print(response)
-print(click_page(response))
+print(state["current_page"])
+
+print("Hello")
