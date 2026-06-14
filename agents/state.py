@@ -24,7 +24,7 @@ class MultipleQuestion(TypedDict):
     questions: list[str] | None
 
 class AllElements(TypedDict):
-    question_list: list[int]
+    question_list: list[{"question": str, "index": int}]
     follow_through: int
     follow_through_reason: str
 

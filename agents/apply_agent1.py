@@ -200,6 +200,7 @@ def get_all_elements(state: ApplicationState):
     clickables = page.locator(interactive_elements)
     all_elements = []
     for i in range(clickables.count()):
+        current_element = []
         click = clickables.nth(i)
         input_type = click.get_attribute("type")
         if input_type == "checkbox" or input_type == "radio":
@@ -230,7 +231,8 @@ def get_all_elements(state: ApplicationState):
             "text": text,
             "label_text": label_text
         }
-        all_elements.append(data)
+        current_element.append(data)
+        all_elements.append({"question": None, "option": current_element})
     
     state["all_elements"] = all_elements
     return state
