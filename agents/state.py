@@ -19,12 +19,31 @@ from typing import TypedDict, Literal, Annotated
 from pydantic import BaseModel
 from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, HumanMessage, ToolMessage
+from playwright.sync_api import Locator
+
+class MultipleQuestionItem(TypedDict):
+    tag: str | None
+    index: int | None
+    element_id: str | None
+    name: str | None
+    placeholder: str | None
+    value: str | None
+    href: str | None
+    onclick: str | None
+    text: str | None
+    label_text: str
 
 class MultipleQuestion(TypedDict):
     questions: list[str] | None
+    needs_custom_grouping: bool
+    custom_grouping: list[list[MultipleQuestionItem]] | None
+
+class AllElementsItem(TypedDict):
+    question: str
+    index: int
 
 class AllElements(TypedDict):
-    question_list: list[{"question": str, "index": int}]
+    question_list: list[AllElementsItem]
     follow_through: int
     follow_through_reason: str
 
@@ -86,9 +105,15 @@ class ApplicationState(TypedDict):
     current_page: dict
     retry_count: int
 
+    clickables: Locator
     front_page: str
+    body_text: str
     ai_decision: ClickAction
     all_elements: list[dict]
+    follow_through_element: dict
+    follow_through_reason: str
+    radio_elements: list[dict]
+    checkbox_elements: list[dict]
 
     # ── Messages ───────────────────────────────────
     messages: Annotated[list[AnyMessage], add_messages]

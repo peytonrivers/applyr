@@ -18,7 +18,7 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import random
 import json
-from state import ApplicationState, ClickAction, MultipleQuestion
+from state import ApplicationState, ClickAction, MultipleQuestion, MultipleQuestionItem, AllElements, AllElementsItem
 
 from langchain_openai import ChatOpenAI
 
@@ -33,6 +33,7 @@ openai_key = os.getenv("OPENAI_KEY")
 llm = ChatOpenAI(model="gpt-5.4-nano", temperature = 0.7, api_key=openai_key)
 structured_llm = llm.with_structured_output(ClickAction)
 multiple_question_llm = llm.with_structured_output(MultipleQuestion)
+all_elements_llm = llm.with_structured_output(AllElements)
 
 url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
 
@@ -188,10 +189,7 @@ def grab_all_elements(state: ApplicationState):
 def get_all_elements(state: ApplicationState):
     page = state["current_page"]["page"]
     interactive_elements = (
-    # --- Native Interactive HTML Tags ---
-    "a[href], button, input"
-    
-    # --- Clickable/Interactive ARIA Roles ---
+    "a[href], button, input, "
     "[role='button'], [role='link'], "
     "[role='switch'], [role='tab'], [role='menuitem'], [role='menuitemcheckbox'], "
     "[role='menuitemradio'], [role='option'], [role='combobox'], [role='slider'], "
@@ -233,8 +231,47 @@ def get_all_elements(state: ApplicationState):
         }
         current_element.append(data)
         all_elements.append({"question": None, "option": current_element})
-    
+    state["body_text"] = page.locator("body").inner_text()
     state["all_elements"] = all_elements
+    state["clickables"] = clickables
+    return state
+
+def ai_all_elements(state: ApplicationState):
+    all_elements = state["all_elements"]
+    body_text = state["body_text"]
+
+    prompt = f"""
+    Your an AI Applicant Helper on the Forms page and your job is two things. 1st is to create a custom questions grouping so what you will be doing is looking through the body text and all of the indexes with its attributes to then create a custom grouping list with the question and option that we will answer later on so do not include questions we will not answer.
+    Ex: [{{'question': "what is your first name", "index": 4}}, {{'question': "What is your phone number", "index": 8}}]
+
+    1. The second timing you will be doing is to try and find the element that saves and continues or submits the application with the reason.
+    Ex: {{
+        "follow_through_element": 109,
+        "follow_through_reason": "it's text contained save and continue with a link to go to the next page"
+    }}
+
+    body_text: {json.dumps(body_text)}
+    all_elements: {json.dumps(all_elements)}
+    """
+
+    response = all_elements_llm.invoke(prompt)
+    presorted_data = response["custom_grouping"]
+    sorted_data = sorted(presorted_data, key=lambda x: x["index"])
+
+    tracker = 0
+    final_elements = []
+    for i in range(len(all_elements)):
+        if tracker >= len(sorted_data):
+            break
+        index1 = all_elements[i]["option"][0]["index"]
+        index2 = sorted_data[tracker]["index"]
+        if index1 == index2:
+            final_elements.append({"question": sorted_data[tracker]["question"], "option": all_elements[i]["option"]})
+            tracker += 1
+    
+    state["all_elements"] = final_elements
+    state["follow_through_element"] = all_elements[response["follow_through_element"]]
+    state["follow_through_reason"] = response["follow_through_reason"]
     return state
 
 def get_all_radio(state: ApplicationState):
@@ -247,7 +284,8 @@ def get_all_radio(state: ApplicationState):
         name = click.get_attribute("name")
         if name in radio_names:
             continue
-        radio_names.append(name)
+        if name:
+            radio_names.append(name)
         current_radio = []
         tag = click.evaluate("el => el.tagName.toLowerCase()")
         index = i
@@ -293,7 +331,7 @@ def get_all_radio(state: ApplicationState):
             text2 = click2.text_content() or ""
             label_text2 = ""
             if element_id2:
-                label2 = page.locator(f'[type="{element_id2}"]')
+                label2 = page.locator(f'[for="{element_id2}"]')
                 if label2.count() > 0:
                     label_text2 = label2.text_content() or ""
             data2 = {
@@ -316,14 +354,12 @@ def get_all_radio(state: ApplicationState):
     return state
 
 def ai_radio_elements(state: ApplicationState):
-    page = state["current_page"]["page"]
+    body_text = state["body_text"]
     radio_elements = state["radio_elements"]
 
     if not radio_elements:
         return state
 
-    raw_text = page.locator("body").inner_text() or ""
-    body_text = raw_text.strip() or ""
 
     prompt = f"""
 You are an AI Application Helper.
@@ -349,6 +385,52 @@ radio_elements:
     {{"question": None, "grouping": "plane", "options": [{{"label_text": "Delta"}}, {{"label_text": "American"}}]}}
 ]
 
+needs_custom_grouping: True
+
+needs_custom_grouping: True
+
+custom_grouping:
+[
+    [
+        {{
+            "tag": "input",
+            "index": 1,
+            "element_id": "car-honda",
+            "name": "car",
+            "placeholder": None,
+            "value": "Honda",
+            "href": None,
+            "onclick": None,
+            "text": "",
+            "label_text": "Honda"
+        }},
+        {{
+            "tag": "input",
+            "index": 4,
+            "element_id": "car-toyota",
+            "name": "car",
+            "placeholder": None,
+            "value": "Toyota",
+            "href": None,
+            "onclick": None,
+            "text": "",
+            "label_text": "Toyota"
+        }},
+        {{
+            "tag": "input",
+            "index": 8,
+            "element_id": "car-ford",
+            "name": "car",
+            "placeholder": None,
+            "value": "Ford",
+            "href": None,
+            "onclick": None,
+            "text": "",
+            "label_text": "Ford"
+        }}
+    ]
+]
+
 Correct response:
 inside of the questions dictionary ["What car do you want?", "What plane do you like better?"]
 
@@ -357,6 +439,12 @@ Incorrect response:
 """
 
     response = multiple_question_llm.invoke(prompt)
+    needs_custom_grouping = response["needs_custom_grouping"]
+
+    if needs_custom_grouping:
+        state["radio_elements"] = response["radio_elements"]
+        return state
+
 
     for i in range(min(len(radio_elements), len(response["questions"]))):
         radio_elements[i]["question"] = response["questions"][i]
@@ -463,14 +551,11 @@ def get_all_checkboxes(state: ApplicationState):
     return state
 
 def ai_checkbox_elements(state: ApplicationState):
-    page = state["current_page"]["page"]
+    body_text = state["body_text"]
     checkbox_elements = state["checkbox_elements"]
 
     if not checkbox_elements:
         return state
-
-    raw_text = page.locator("body").inner_text() or ""
-    body_text = raw_text.strip() or ""
 
     prompt = f"""
 You are an AI Application Helper.
@@ -488,12 +573,47 @@ Rules:
 - Do not reorder the questions.
 - Do not invent questions.
 - Use the exact question text from the body_text when possible.
+- If multiple checkbox groupings actually belong to one question, set needs_custom_grouping to True and return custom_grouping.
+- custom_grouping must be a list of lists.
+- Each inner list must contain the full checkbox option dictionaries that belong together.
 
 Example:
 checkbox_elements:
 [
-    {{"question": None, "grouping": "skills", "options": [{{"label_text": "Python"}}, {{"label_text": "Java"}}]}},
-    {{"question": None, "grouping": "ethnicity", "options": [{{"label_text": "Hispanic or Latino"}}, {{"label_text": "Asian"}}]}}
+    {{"question": None, "grouping": "skills", "options": [{{"label_text": "Python", "index": 1}}, {{"label_text": "Java", "index": 4}}]}},
+    {{"question": None, "grouping": "ethnicity", "options": [{{"label_text": "Hispanic or Latino", "index": 8}}, {{"label_text": "Asian", "index": 9}}]}}
+]
+
+needs_custom_grouping: True
+
+custom_grouping:
+[
+    [
+        {{
+            "tag": "input",
+            "index": 1,
+            "element_id": "skill-python",
+            "name": "skills",
+            "placeholder": None,
+            "value": "Python",
+            "href": None,
+            "onclick": None,
+            "text": "",
+            "label_text": "Python"
+        }},
+        {{
+            "tag": "input",
+            "index": 4,
+            "element_id": "skill-java",
+            "name": "skills",
+            "placeholder": None,
+            "value": "Java",
+            "href": None,
+            "onclick": None,
+            "text": "",
+            "label_text": "Java"
+        }}
+    ]
 ]
 
 Correct response:
@@ -504,6 +624,11 @@ Incorrect response:
 """
 
     response = multiple_question_llm.invoke(prompt)
+    needs_custom_grouping = response["needs_custom_grouping"]
+
+    if needs_custom_grouping:
+        state["checkbox_elements"] = response["custom_grouping"]
+        return state
 
     for i in range(min(len(checkbox_elements), len(response["questions"]))):
         checkbox_elements[i]["question"] = response["questions"][i]
