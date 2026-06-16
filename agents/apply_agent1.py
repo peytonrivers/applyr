@@ -18,7 +18,7 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import random
 import json
-from state import ApplicationState, ClickAction, MultipleQuestion, MultipleQuestionItem, AllElements, AllElementsItem
+from state import ApplicationState, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements
 
 from langchain_openai import ChatOpenAI
 
@@ -222,7 +222,7 @@ def ai_all_elements(state: ApplicationState):
     Your an AI Applicant Helper on the Forms page and your job is two things. 1st is to create a custom questions grouping so what you will be doing is looking through the body text and all of the indexes with its attributes to then create a custom grouping list with the question and option that we will answer later on so do not include questions we will not answer.
     Ex: [{{'question': "what is your first name", "index": 4}}, {{'question': "What is your phone number", "index": 8}}]
 
-    1. The second timing you will be doing is to try and find the element that saves and continues or submits the application with the reason.
+    1. The second thing you will be doing is to try and find the element that saves and continues or submits the application with the reason.
     Ex: {{
         "follow_through_element": 109,
         "follow_through_reason": "it's text contained save and continue with a link to go to the next page"
@@ -387,6 +387,9 @@ custom_grouping:
             "tag": "input",
             "index": 1,
             "element_id": "car-honda",
+            "element_type": "radio",
+            "role": None,
+            "aria_label": None,
             "name": "car",
             "placeholder": None,
             "value": "Honda",
@@ -399,6 +402,9 @@ custom_grouping:
             "tag": "input",
             "index": 4,
             "element_id": "car-toyota",
+            "element_type": "radio",
+            "role": None,
+            "aria_label": None,
             "name": "car",
             "placeholder": None,
             "value": "Toyota",
@@ -411,6 +417,9 @@ custom_grouping:
             "tag": "input",
             "index": 8,
             "element_id": "car-ford",
+            "element_type": "radio",
+            "role": None,
+            "aria_label": None,
             "name": "car",
             "placeholder": None,
             "value": "Ford",
@@ -591,6 +600,9 @@ custom_grouping:
             "tag": "input",
             "index": 1,
             "element_id": "skill-python",
+            "element_type": "checkbox",
+            "role": None,
+            "aria_label": None,
             "name": "skills",
             "placeholder": None,
             "value": "Python",
@@ -603,6 +615,9 @@ custom_grouping:
             "tag": "input",
             "index": 4,
             "element_id": "skill-java",
+            "element_type": "checkbox",
+            "role": None,
+            "aria_label": None,
             "name": "skills",
             "placeholder": None,
             "value": "Java",

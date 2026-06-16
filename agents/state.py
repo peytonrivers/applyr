@@ -36,17 +36,26 @@ class MultipleQuestionItem(TypedDict):
     text: str | None
     label_text: str | None
 
+class MultipleQuestionGrouping(TypedDict):
+    question: str
+    grouping: str
+    options: list[MultipleQuestionItem]
+
 class MultipleQuestion(TypedDict):
     questions: list[str] | None
     needs_custom_grouping: bool
-    custom_grouping: list[list[MultipleQuestionItem]] | None
+    custom_grouping: list[MultipleQuestionGrouping] | None
 
 class AllElementsItem(TypedDict):
     question: str
     index: int
 
+class AllElementsGrouping(TypedDict):
+    question: str
+    option: AllElementsItem
+
 class AllElements(TypedDict):
-    question_list: list[AllElementsItem]
+    question_list: list[AllElementsGrouping]
     follow_through: int
     follow_through_reason: str
 
