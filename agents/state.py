@@ -25,13 +25,16 @@ class MultipleQuestionItem(TypedDict):
     tag: str | None
     index: int | None
     element_id: str | None
+    element_type: str | None
+    role: str | None
+    aria_label: str | None
     name: str | None
     placeholder: str | None
     value: str | None
     href: str | None
     onclick: str | None
     text: str | None
-    label_text: str
+    label_text: str | None
 
 class MultipleQuestion(TypedDict):
     questions: list[str] | None
@@ -105,7 +108,9 @@ class ApplicationState(TypedDict):
     current_page: dict
     retry_count: int
 
-    clickables: Locator
+    all_elements_clickables: Locator
+    radio_elements_clickables: Locator
+    checkbox_elements_clickables: Locator
     front_page: str
     body_text: str
     ai_decision: ClickAction

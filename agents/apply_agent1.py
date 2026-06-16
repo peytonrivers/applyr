@@ -159,33 +159,6 @@ def click_page(state: ApplicationState):
         state["current_page"]["url"] = page.url
         return state
 
-def grab_all_elements(state: ApplicationState):
-    page = state["current_page"]["page"]
-    clickables = page.locator("""a,button,input,[type="button"],[type="link"]""")
-    elements = []
-    for i in range(clickables.count()):
-        click = clickables.nth(i)
-        tag = click.evaluate("el => el.tagName.toLowerCase()")
-        type = click.get_attribute("type")
-        if type == "radio" or type == "checkbox":
-            continue
-        id = click.get_attribute("id") or None
-        text = click.text_content().strip() or ""
-        href = click.get_attribute("href")
-        label = page.locator(f'label[for="{id}"]') or None
-        name = click.get_attribute("name")
-        placeholder = click.get_attribute("placeholder")
-        data = {
-            "tag": tag,
-            "type": type,
-            "href": href,
-            "label": label,
-            "name": name,
-            "placeholder": placeholder
-            }
-        elements.append(data)
-    return state
-
 def get_all_elements(state: ApplicationState):
     page = state["current_page"]["page"]
     interactive_elements = (
@@ -200,12 +173,14 @@ def get_all_elements(state: ApplicationState):
     for i in range(clickables.count()):
         current_element = []
         click = clickables.nth(i)
-        input_type = click.get_attribute("type")
-        if input_type == "checkbox" or input_type == "radio":
+        element_type = click.get_attribute("type")
+        if element_type == "checkbox" or element_type == "radio":
             continue
         tag = click.evaluate("el => el.tagName.toLowerCase()")
         index = i
         element_id = click.get_attribute("id")
+        role = click.get_attribute("role")
+        aria_label = click.get_attribute("aria-label")
         name = click.get_attribute("name")
         placeholder = click.get_attribute("placeholder")
         value = click.get_attribute("value")
@@ -221,6 +196,9 @@ def get_all_elements(state: ApplicationState):
             "tag": tag,
             "index": i,
             "element_id": element_id,
+            "element_type": element_type,
+            "role": role,
+            "aria_label": aria_label,
             "name": name,
             "placeholder": placeholder,
             "value": value,
@@ -233,7 +211,7 @@ def get_all_elements(state: ApplicationState):
         all_elements.append({"question": None, "option": current_element})
     state["body_text"] = page.locator("body").inner_text()
     state["all_elements"] = all_elements
-    state["clickables"] = clickables
+    state["all_elements_clickables"] = clickables
     return state
 
 def ai_all_elements(state: ApplicationState):
@@ -290,6 +268,9 @@ def get_all_radio(state: ApplicationState):
         tag = click.evaluate("el => el.tagName.toLowerCase()")
         index = i
         element_id = click.get_attribute("id")
+        element_type = click.get_attribute("type")
+        role = click.get_attribute("role")
+        aria_label = click.get_attribute("aria-label")
         name = click.get_attribute("name")
         placeholder = click.get_attribute("placeholder")
         value = click.get_attribute("value")
@@ -305,6 +286,9 @@ def get_all_radio(state: ApplicationState):
             "tag": tag,
             "index": i,
             "element_id": element_id,
+            "element_type": element_type,
+            "role": role,
+            "aria_label": aria_label,
             "name": name,
             "placeholder": placeholder,
             "value": value,
@@ -323,6 +307,9 @@ def get_all_radio(state: ApplicationState):
                 continue
             tag2 = click2.evaluate("el => el.tagName.toLowerCase()")
             element_id2 = click2.get_attribute("id")
+            element_type2 = click2.get_attribute("type")
+            role2 = click2.get_attribute("role")
+            aria_label2 = click2.get_attribute("aria-label")
             name2 = click2.get_attribute("name")
             placeholder2 = click2.get_attribute("placeholder")
             value2 = click2.get_attribute("value")
@@ -338,6 +325,9 @@ def get_all_radio(state: ApplicationState):
                 "tag": tag2,
                 "index": l,
                 "element_id": element_id2,
+                "element_type": element_type2,
+                "role": role2,
+                "aria_label": aria_label2,
                 "name": name2,
                 "placeholder": placeholder2,
                 "value": value2,
@@ -351,6 +341,7 @@ def get_all_radio(state: ApplicationState):
 
 
     state["radio_elements"] = radio_elements
+    state["radio_elements_clickables"] = clickables
     return state
 
 def ai_radio_elements(state: ApplicationState):
@@ -472,6 +463,9 @@ def get_all_checkboxes(state: ApplicationState):
 
         tag = click.evaluate("el => el.tagName.toLowerCase()")
         element_id = click.get_attribute("id")
+        input_type = click.get_attribute("type")
+        role = click.get_attribute("role")
+        aria_label = click.get_attribute("aria-label")
         name = click.get_attribute("name")
         placeholder = click.get_attribute("placeholder")
         value = click.get_attribute("value")
@@ -489,6 +483,9 @@ def get_all_checkboxes(state: ApplicationState):
             "tag": tag,
             "index": i,
             "element_id": element_id,
+            "element_type": input_type,
+            "role": role,
+            "aria_label": aria_label,
             "name": name,
             "placeholder": placeholder,
             "value": value,
@@ -503,32 +500,33 @@ def get_all_checkboxes(state: ApplicationState):
         for l in range(clickables.count()):
             if i == l:
                 continue
-
             click2 = clickables.nth(l)
             name2 = click2.get_attribute("name")
-
             if name != name2:
                 continue
-
             tag2 = click2.evaluate("el => el.tagName.toLowerCase()")
             element_id2 = click2.get_attribute("id")
+            element_type2 = click2.get_attribute("type")
+            role2 = click2.get_attribute("role")
+            aria_label2 = click2.get_attribute("aria-label")
             name2 = click2.get_attribute("name")
             placeholder2 = click2.get_attribute("placeholder")
             value2 = click2.get_attribute("value")
             href2 = click2.get_attribute("href")
             onclick2 = click2.get_attribute("onclick")
             text2 = click2.text_content() or ""
-
             label_text2 = ""
             if element_id2:
                 label2 = page.locator(f'[for="{element_id2}"]')
                 if label2.count() > 0:
-                    label_text2 = label2.first.text_content() or ""
-
+                    label_text2 = label2.text_content() or ""
             data2 = {
                 "tag": tag2,
                 "index": l,
                 "element_id": element_id2,
+                "element_type": element_type2,
+                "role": role2,
+                "aria_label": aria_label2,
                 "name": name2,
                 "placeholder": placeholder2,
                 "value": value2,
@@ -547,7 +545,7 @@ def get_all_checkboxes(state: ApplicationState):
         })
 
     state["checkbox_elements"] = checkbox_elements
-
+    state["checkbox_elements_clickables"] = clickables
     return state
 
 def ai_checkbox_elements(state: ApplicationState):
