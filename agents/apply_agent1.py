@@ -18,7 +18,8 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 import random
 import json
-from state import ApplicationState, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements
+import time
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess
 
 from langchain_openai import ChatOpenAI
 
@@ -34,6 +35,7 @@ llm = ChatOpenAI(model="gpt-5.4-nano", temperature = 0.7, api_key=openai_key)
 structured_llm = llm.with_structured_output(ClickAction)
 multiple_question_llm = llm.with_structured_output(MultipleQuestion)
 all_elements_llm = llm.with_structured_output(AllElements)
+cookies_process_llm = llm.with_structured_output(CookiesProcess)
 
 url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
 
@@ -43,6 +45,8 @@ def front_page_elements(state: ApplicationState, url):
         browser = p.chromium.launch(headless=False)
         context = browser.new_context()
         page = browser.new_page()
+        print(page)
+        print("------")
         page.goto(url)
         time.sleep(5)
         url1 = page.url
@@ -84,6 +88,10 @@ def front_page_elements(state: ApplicationState, url):
         state["front_page"] = json.dumps(elements)
         response = front_page_decision(state)
         state = click_page(response)
+        state1 = get_all_elements(state)
+        state2 = ai_all_elements(state1)
+        print(state["follow_through_element"])
+        print(state["follow_through_reason"])
 
         return state
 
@@ -150,8 +158,11 @@ def click_page(state: ApplicationState):
             click.click()
         new_page = new_page.value
         new_page.wait_for_load_state("networkidle")
+        time.sleep(5)
         state["current_page"]["page"] = new_page
         state["current_page"]["url"] = new_page.url
+        print("Current Page: " + state["current_page"]["page"])
+        print("Current Url: " + state["current_page"]["url"])
         return state
     except Exception:
         page.wait_for_load_state("networkidle")
@@ -233,23 +244,31 @@ def ai_all_elements(state: ApplicationState):
     """
 
     response = all_elements_llm.invoke(prompt)
+    print(response)
     presorted_data = response["custom_grouping"]
     sorted_data = sorted(presorted_data, key=lambda x: x["index"])
 
     tracker = 0
     final_elements = []
+
     for i in range(len(all_elements)):
         if tracker >= len(sorted_data):
             break
+
         index1 = all_elements[i]["option"][0]["index"]
         index2 = sorted_data[tracker]["index"]
+
         if index1 == index2:
-            final_elements.append({"question": sorted_data[tracker]["question"], "option": all_elements[i]["option"]})
+            final_elements.append({
+                "question": sorted_data[tracker]["question"],
+                "option": all_elements[i]["option"]
+            })
             tracker += 1
-    
+
     state["all_elements"] = final_elements
-    state["follow_through_element"] = all_elements[response["follow_through_element"]]
+    state["follow_through_element"] = response["follow_through_element"]
     state["follow_through_reason"] = response["follow_through_reason"]
+
     return state
 
 def get_all_radio(state: ApplicationState):
@@ -351,7 +370,6 @@ def ai_radio_elements(state: ApplicationState):
     if not radio_elements:
         return state
 
-
     prompt = f"""
 You are an AI Application Helper.
 
@@ -368,67 +386,58 @@ Rules:
 - Do not reorder the questions.
 - Do not invent questions.
 - Use the exact question text from the body_text when possible.
+- If multiple radio groupings actually belong to one question, set needs_custom_grouping to True and return custom_grouping.
+- custom_grouping must be a list of dictionaries.
+- Each dictionary must have question, grouping, and options.
+- options must contain the full radio option dictionaries that belong together.
 
 Example:
 radio_elements:
 [
-    {{"question": None, "grouping": "car", "options": [{{"label_text": "Honda"}}, {{"label_text": "Toyota"}}]}},
-    {{"question": None, "grouping": "plane", "options": [{{"label_text": "Delta"}}, {{"label_text": "American"}}]}}
+    {{"question": None, "grouping": "car", "options": [{{"label_text": "Honda", "index": 1}}, {{"label_text": "Toyota", "index": 4}}]}},
+    {{"question": None, "grouping": "plane", "options": [{{"label_text": "Delta", "index": 8}}, {{"label_text": "American", "index": 9}}]}}
 ]
-
-needs_custom_grouping: True
 
 needs_custom_grouping: True
 
 custom_grouping:
 [
-    [
-        {{
-            "tag": "input",
-            "index": 1,
-            "element_id": "car-honda",
-            "element_type": "radio",
-            "role": None,
-            "aria_label": None,
-            "name": "car",
-            "placeholder": None,
-            "value": "Honda",
-            "href": None,
-            "onclick": None,
-            "text": "",
-            "label_text": "Honda"
-        }},
-        {{
-            "tag": "input",
-            "index": 4,
-            "element_id": "car-toyota",
-            "element_type": "radio",
-            "role": None,
-            "aria_label": None,
-            "name": "car",
-            "placeholder": None,
-            "value": "Toyota",
-            "href": None,
-            "onclick": None,
-            "text": "",
-            "label_text": "Toyota"
-        }},
-        {{
-            "tag": "input",
-            "index": 8,
-            "element_id": "car-ford",
-            "element_type": "radio",
-            "role": None,
-            "aria_label": None,
-            "name": "car",
-            "placeholder": None,
-            "value": "Ford",
-            "href": None,
-            "onclick": None,
-            "text": "",
-            "label_text": "Ford"
-        }}
-    ]
+    {{
+        "question": "What car do you want?",
+        "grouping": "car",
+        "options": [
+            {{
+                "tag": "input",
+                "index": 1,
+                "element_id": "car-honda",
+                "element_type": "radio",
+                "role": None,
+                "aria_label": None,
+                "name": "car",
+                "placeholder": None,
+                "value": "Honda",
+                "href": None,
+                "onclick": None,
+                "text": "",
+                "label_text": "Honda"
+            }},
+            {{
+                "tag": "input",
+                "index": 4,
+                "element_id": "car-toyota",
+                "element_type": "radio",
+                "role": None,
+                "aria_label": None,
+                "name": "car",
+                "placeholder": None,
+                "value": "Toyota",
+                "href": None,
+                "onclick": None,
+                "text": "",
+                "label_text": "Toyota"
+            }}
+        ]
+    }}
 ]
 
 Correct response:
@@ -442,9 +451,8 @@ Incorrect response:
     needs_custom_grouping = response["needs_custom_grouping"]
 
     if needs_custom_grouping:
-        state["radio_elements"] = response["radio_elements"]
+        state["radio_elements"] = response["custom_grouping"]
         return state
-
 
     for i in range(min(len(radio_elements), len(response["questions"]))):
         radio_elements[i]["question"] = response["questions"][i]
@@ -581,8 +589,9 @@ Rules:
 - Do not invent questions.
 - Use the exact question text from the body_text when possible.
 - If multiple checkbox groupings actually belong to one question, set needs_custom_grouping to True and return custom_grouping.
-- custom_grouping must be a list of lists.
-- Each inner list must contain the full checkbox option dictionaries that belong together.
+- custom_grouping must be a list of dictionaries.
+- Each dictionary must have question, grouping, and options.
+- options must contain the full checkbox option dictionaries that belong together.
 
 Example:
 checkbox_elements:
@@ -595,38 +604,42 @@ needs_custom_grouping: True
 
 custom_grouping:
 [
-    [
-        {{
-            "tag": "input",
-            "index": 1,
-            "element_id": "skill-python",
-            "element_type": "checkbox",
-            "role": None,
-            "aria_label": None,
-            "name": "skills",
-            "placeholder": None,
-            "value": "Python",
-            "href": None,
-            "onclick": None,
-            "text": "",
-            "label_text": "Python"
-        }},
-        {{
-            "tag": "input",
-            "index": 4,
-            "element_id": "skill-java",
-            "element_type": "checkbox",
-            "role": None,
-            "aria_label": None,
-            "name": "skills",
-            "placeholder": None,
-            "value": "Java",
-            "href": None,
-            "onclick": None,
-            "text": "",
-            "label_text": "Java"
-        }}
-    ]
+    {{
+        "question": "Which skills do you have?",
+        "grouping": "skills",
+        "options": [
+            {{
+                "tag": "input",
+                "index": 1,
+                "element_id": "skill-python",
+                "element_type": "checkbox",
+                "role": None,
+                "aria_label": None,
+                "name": "skills",
+                "placeholder": None,
+                "value": "Python",
+                "href": None,
+                "onclick": None,
+                "text": "",
+                "label_text": "Python"
+            }},
+            {{
+                "tag": "input",
+                "index": 4,
+                "element_id": "skill-java",
+                "element_type": "checkbox",
+                "role": None,
+                "aria_label": None,
+                "name": "skills",
+                "placeholder": None,
+                "value": "Java",
+                "href": None,
+                "onclick": None,
+                "text": "",
+                "label_text": "Java"
+            }}
+        ]
+    }}
 ]
 
 Correct response:

@@ -36,10 +36,12 @@ class MultipleQuestionItem(TypedDict):
     text: str | None
     label_text: str | None
 
+
 class MultipleQuestionGrouping(TypedDict):
     question: str
-    grouping: str
+    grouping: str | None
     options: list[MultipleQuestionItem]
+
 
 class MultipleQuestion(TypedDict):
     questions: list[str] | None
@@ -47,16 +49,17 @@ class MultipleQuestion(TypedDict):
     custom_grouping: list[MultipleQuestionGrouping] | None
 
 class AllElementsItem(TypedDict):
-    question: str
+    question: str 
     index: int
 
 class AllElementsGrouping(TypedDict):
     question: str
-    option: AllElementsItem
+    option: list[AllElementsItem]
+
 
 class AllElements(TypedDict):
-    question_list: list[AllElementsGrouping]
-    follow_through: int
+    custom_grouping: list[AllElementsGrouping]
+    follow_through_element: int | None
     follow_through_reason: str
 
 class ClickAction(TypedDict):
@@ -64,8 +67,21 @@ class ClickAction(TypedDict):
     index_number: int | None
     reason: str
 
-class ApplicationState(TypedDict):
+class CurrentPage(TypedDict):
+    page: str | None
+    url: str | None
 
+class MiddlePageDecision(TypedDict):
+    action: Literal["apply", "signup", "forms", "cookies", "other", "error"]
+    action_reason: str
+
+class CookiesProcess(TypedDict):
+    follow_through_index: int | None
+    follow_through_reason: str | None
+    action: Literal["apply", "signup", "forms", "other", "error"]
+    action_reason: str
+
+class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────
     user_id: str
     first_name: str
@@ -106,15 +122,12 @@ class ApplicationState(TypedDict):
 
     # ── Forms Loop ─────────────────────────────────
     total_pages: int | None
-    current_page: int
-    questions: list[dict]
-    errors: list[dict]
 
     # ── Signup ─────────────────────────────────────
     verification_code: str | None
 
     # ── Routing ────────────────────────────────────
-    current_page: dict
+    current_page: CurrentPage
     retry_count: int
 
     all_elements_clickables: Locator
