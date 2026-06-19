@@ -16,6 +16,7 @@ import asyncio
 from playwright.async_api import async_playwright, Playwright
 from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
+from playwright.sync_api import TimeoutError
 import random
 import json
 import time
@@ -31,7 +32,7 @@ load_dotenv()
 
 
 openai_key = os.getenv("OPENAI_KEY")
-llm = ChatOpenAI(model="gpt-5.4-nano", temperature = 0.7, api_key=openai_key)
+llm = ChatOpenAI(model="gpt-5.4-nano", temperature = 0.3, api_key=openai_key)
 structured_llm = llm.with_structured_output(ClickAction)
 multiple_question_llm = llm.with_structured_output(MultipleQuestion)
 all_elements_llm = llm.with_structured_output(AllElements)
@@ -660,6 +661,351 @@ Incorrect response:
         checkbox_elements[i]["question"] = response["questions"][i]
 
     state["checkbox_elements"] = checkbox_elements
+
+    return state
+
+def process_cookies(state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    get_all_elements(state)
+
+    body_text = page.locator("body").inner_text()
+    all_elements = state["all_elements"]
+
+    prompt = f"""
+Your job is to determine the element that we need to click to accept cookies by its index and the reason why we are clicking that element.
+
+We also need to determine which process we are going to next.
+
+Actions:
+- signup: We need to sign up or login.
+- forms: We need to fill out forms.
+- other: Not an error, but a custom action is needed.
+- error: The page is not working and we need to leave.
+
+Return this exact structure:
+{{
+  "follow_through_index": 4,
+  "follow_through_reason": "The text says accept cookies.",
+  "action": "forms",
+  "action_reason": "The page has form fields that need to be filled out."
+}}
+
+body_text:
+{body_text}
+
+all_elements:
+{all_elements}
+"""
+
+    response = cookies_process_llm.invoke(prompt)
+
+    state["cookies_process"] = response
+
+    return state
+
+
+def cookies_action(state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    clickables = state["all_elements_clickables"]
+
+    cookies_process = state["cookies_process"]
+
+    follow_through_index = cookies_process["follow_through_index"]
+    action = cookies_process["action"]
+
+    if follow_through_index is None:
+        return action
+
+    click = clickables.nth(follow_through_index)
+
+    try:
+        with page.expect_popup(timeout=5000) as popup_info:
+            click.click()
+
+        new_page = popup_info.value
+        new_page.wait_for_load_state("networkidle", timeout=5000)
+
+        state["current_page"]["page"] = new_page
+        state["current_page"]["url"] = new_page.url
+
+    except TimeoutError:
+        try:
+            page.wait_for_load_state("networkidle", timeout=20000)
+        except TimeoutError:
+            state["cookies_response"]["action"] = "error"
+            action = state["cookies_response"]["action"]
+
+        state["current_page"]["url"] = page.url
+
+    return action
+
+def get_all_select(state: ApplicationState):
+    page = state["current_page"]["page"]
+    clickables = page.locator("select")
+
+    select_elements = []
+
+    for i in range(clickables.count()):
+        click = clickables.nth(i)
+
+        tag = click.evaluate("el => el.tagName.toLowerCase()")
+        element_id = click.get_attribute("id")
+        element_type = click.get_attribute("type")
+        role = click.get_attribute("role")
+        aria_label = click.get_attribute("aria-label")
+        name = click.get_attribute("name")
+        placeholder = click.get_attribute("placeholder")
+        value = click.get_attribute("value")
+        href = click.get_attribute("href")
+        onclick = click.get_attribute("onclick")
+        text = click.text_content() or ""
+
+        label_text = ""
+        if element_id:
+            label = page.locator(f'[for="{element_id}"]')
+            if label.count() > 0:
+                label_text = label.first.text_content() or ""
+
+        options = click.locator("option")
+        current_options = []
+
+        for l in range(options.count()):
+            option = options.nth(l)
+
+            option_tag = option.evaluate("el => el.tagName.toLowerCase()")
+            option_value = option.get_attribute("value")
+            option_text = option.text_content() or ""
+
+            option_data = {
+                "tag": option_tag,
+                "index": l,
+                "value": option_value,
+                "text": option_text
+            }
+
+            current_options.append(option_data)
+
+        data = {
+            "tag": tag,
+            "index": i,
+            "element_id": element_id,
+            "element_type": element_type,
+            "role": role,
+            "aria_label": aria_label,
+            "name": name,
+            "placeholder": placeholder,
+            "value": value,
+            "href": href,
+            "onclick": onclick,
+            "text": text,
+            "label_text": label_text,
+            "options": current_options
+        }
+
+        select_elements.append({
+            "grouping": name,
+            "question": None,
+            "options": [data]
+        })
+
+    state["select_elements"] = select_elements
+    state["select_elements_clickables"] = clickables
+    return state
+
+def ai_select_elements(state: ApplicationState):
+    body_text = state["body_text"]
+    select_elements = state["select_elements"]
+
+    if not select_elements:
+        return state
+
+    prompt = f"""
+You are an AI Application Helper.
+
+Your job is to look at the body text of this page and match each select/dropdown grouping to the exact question from the page text.
+
+body_text:
+{json.dumps(body_text)}
+
+select_elements:
+{json.dumps(select_elements)}
+
+Rules:
+- The questions must be in the same exact order as the select_elements list.
+- Do not reorder the questions.
+- Do not invent questions.
+- Use the exact question text from the body_text when possible.
+- Each select element usually belongs to one question.
+- If multiple select groupings actually belong to one question, set needs_custom_grouping to True and return custom_grouping.
+- custom_grouping must be a list of dictionaries.
+- Each dictionary must have question, grouping, and options.
+- options must contain the full select option dictionaries that belong together.
+
+Example:
+select_elements:
+[
+    {{"question": None, "grouping": "country", "options": [{{"label_text": "Country", "index": 1}}]}},
+    {{"question": None, "grouping": "state", "options": [{{"label_text": "State", "index": 2}}]}}
+]
+
+Correct response:
+inside of the questions dictionary ["What country do you live in?", "What state do you live in?"]
+
+Incorrect response:
+["What state do you live in?", "What country do you live in?"]
+"""
+
+    response = multiple_question_llm.invoke(prompt)
+    needs_custom_grouping = response["needs_custom_grouping"]
+
+    if needs_custom_grouping:
+        state["select_elements"] = response["custom_grouping"]
+        return state
+
+    for i in range(min(len(select_elements), len(response["questions"]))):
+        select_elements[i]["question"] = response["questions"][i]
+
+    state["select_elements"] = select_elements
+
+    return state
+
+def get_all_datalist(state: ApplicationState):
+    page = state["current_page"]["page"]
+    clickables = page.locator("input[list]")
+
+    datalist_elements = []
+
+    for i in range(clickables.count()):
+        click = clickables.nth(i)
+
+        tag = click.evaluate("el => el.tagName.toLowerCase()")
+        element_id = click.get_attribute("id")
+        element_type = click.get_attribute("type")
+        role = click.get_attribute("role")
+        aria_label = click.get_attribute("aria-label")
+        name = click.get_attribute("name")
+        placeholder = click.get_attribute("placeholder")
+        value = click.get_attribute("value")
+        href = click.get_attribute("href")
+        onclick = click.get_attribute("onclick")
+        text = click.text_content() or ""
+
+        label_text = ""
+        if element_id:
+            label = page.locator(f'[for="{element_id}"]')
+            if label.count() > 0:
+                label_text = label.first.text_content() or ""
+
+        current_options = []
+
+        list_id = click.get_attribute("list")
+
+        if list_id:
+            datalist = page.locator(f'datalist[id="{list_id}"]')
+
+            if datalist.count() > 0:
+                options = datalist.first.locator("option")
+
+                for l in range(options.count()):
+                    option = options.nth(l)
+
+                    option_tag = option.evaluate("el => el.tagName.toLowerCase()")
+                    option_value = option.get_attribute("value")
+                    option_text = option.text_content() or ""
+
+                    option_data = {
+                        "tag": option_tag,
+                        "index": l,
+                        "value": option_value,
+                        "text": option_text
+                    }
+
+                    current_options.append(option_data)
+
+        data = {
+            "tag": tag,
+            "index": i,
+            "element_id": element_id,
+            "element_type": element_type,
+            "role": role,
+            "aria_label": aria_label,
+            "name": name,
+            "placeholder": placeholder,
+            "value": value,
+            "href": href,
+            "onclick": onclick,
+            "text": text,
+            "label_text": label_text,
+            "options": current_options
+        }
+
+        datalist_elements.append({
+            "grouping": name,
+            "question": None,
+            "options": [data]
+        })
+
+    state["datalist_elements"] = datalist_elements
+    state["datalist_elements_clickables"] = clickables
+
+    return state
+
+def ai_datalist_elements(state: ApplicationState):
+    body_text = state["body_text"]
+    datalist_elements = state["datalist_elements"]
+
+    if not datalist_elements:
+        return state
+
+    prompt = f"""
+You are an AI Application Helper.
+
+Your job is to look at the body text of this page and match each datalist grouping to the exact question from the page text.
+
+body_text:
+{json.dumps(body_text)}
+
+datalist_elements:
+{json.dumps(datalist_elements)}
+
+Rules:
+- The questions must be in the same exact order as the datalist_elements list.
+- Do not reorder the questions.
+- Do not invent questions.
+- Use the exact question text from the body_text when possible.
+- Each datalist element usually belongs to one question.
+- If multiple datalist groupings actually belong to one question, set needs_custom_grouping to True and return custom_grouping.
+- custom_grouping must be a list of dictionaries.
+- Each dictionary must have question, grouping, and options.
+- options must contain the full datalist option dictionaries that belong together.
+
+Example:
+datalist_elements:
+[
+    {{"question": None, "grouping": "country", "options": [{{"label_text": "Country", "index": 1}}]}},
+    {{"question": None, "grouping": "state", "options": [{{"label_text": "State", "index": 2}}]}}
+]
+
+Correct response:
+inside of the questions dictionary ["What country do you live in?", "What state do you live in?"]
+
+Incorrect response:
+["What state do you live in?", "What country do you live in?"]
+"""
+
+    response = multiple_question_llm.invoke(prompt)
+    needs_custom_grouping = response["needs_custom_grouping"]
+
+    if needs_custom_grouping:
+        state["datalist_elements"] = response["custom_grouping"]
+        return state
+
+    for i in range(min(len(datalist_elements), len(response["questions"]))):
+        datalist_elements[i]["question"] = response["questions"][i]
+
+    state["datalist_elements"] = datalist_elements
 
     return state
 

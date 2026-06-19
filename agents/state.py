@@ -22,19 +22,8 @@ from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, HumanM
 from playwright.sync_api import Locator
 
 class MultipleQuestionItem(TypedDict):
-    tag: str | None
-    index: int | None
-    element_id: str | None
-    element_type: str | None
-    role: str | None
-    aria_label: str | None
-    name: str | None
-    placeholder: str | None
-    value: str | None
-    href: str | None
-    onclick: str | None
-    text: str | None
     label_text: str | None
+    index: int | None
 
 
 class MultipleQuestionGrouping(TypedDict):
@@ -130,6 +119,7 @@ class ApplicationState(TypedDict):
     current_page: CurrentPage
     retry_count: int
 
+    cookies_response: CookiesProcess
     all_elements_clickables: Locator
     radio_elements_clickables: Locator
     checkbox_elements_clickables: Locator
