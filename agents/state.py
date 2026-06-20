@@ -21,8 +21,13 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, HumanMessage, ToolMessage
 from playwright.sync_api import Locator
 
+class ApplyProcess(TypedDict):
+    application_page: bool
+    index_number: int | None
+    reason: str
+
 class DecidePage(TypedDict):
-    action: Literal["apply", "signup", "forms", "middle", "cookies", "verification", "other", "error"]
+    action: Literal["apply", "signup", "forms", "cookies", "verification", "other", "error"]
     action_reason: str
 
 class MultipleQuestionItem(TypedDict):
@@ -71,8 +76,6 @@ class MiddlePageDecision(TypedDict):
 class CookiesProcess(TypedDict):
     follow_through_index: int | None
     follow_through_reason: str | None
-    action: Literal["apply", "signup", "forms", "other", "error"]
-    action_reason: str
 
 class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────
@@ -123,6 +126,8 @@ class ApplicationState(TypedDict):
     current_page: CurrentPage
     retry_count: int
 
+    previous_action: Literal["apply", "signup", "forms", "cookies", "verification", "other", "error"] | None
+    apply_process: ApplyProcess
     decide_page: DecidePage
     cookies_response: CookiesProcess
     all_elements_clickables: Locator

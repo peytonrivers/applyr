@@ -20,7 +20,8 @@ from playwright.sync_api import TimeoutError
 import random
 import json
 import time
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage
+import base64
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess
 
 from langchain_openai import ChatOpenAI
 
@@ -37,7 +38,8 @@ structured_llm = llm.with_structured_output(ClickAction)
 multiple_question_llm = llm.with_structured_output(MultipleQuestion)
 all_elements_llm = llm.with_structured_output(AllElements)
 cookies_process_llm = llm.with_structured_output(CookiesProcess)
-decide_page_llm = llm.with_structured_output(DecidePage)
+decide_page_llm = llm.with_structured_output(DecidePage, include_raw=True)
+apply_process_llm = llm.with_structured_output(ApplyProcess)
 
 url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
 
@@ -93,8 +95,119 @@ def front_page_elements(state: ApplicationState, url):
         print(state["current_page"])
         state1 = process_cookies(state)
         state2 = cookies_action(state1)
+        state3 = decide_page(state2)
+        state4 = apply_process(state3)
+        state5 = apply_action(state4)
 
         return state
+
+def apply_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+    body_text = page.locator("body").inner_text() or ""
+
+    get_all_elements(state)
+    all_elements = state["all_elements"]
+
+    screenshot_base64 = get_page_screenshot_base64(page)
+
+    prompt = f"""
+You are an AI Applicant Helper.
+
+Your job is to look at the body text, all elements, and screenshot to find the best button/link to click to move forward in the job application.
+
+Return application_page = False only if this page is not part of a job application flow.
+
+Priority rules:
+1. If there is "Apply Manually", choose it.
+2. If there is "Apply Now", "Start Application", "Continue", "Save and Continue", or "Application", choose the best one to move forward.
+3. Never choose "Apply with Resume", "Autofill with Resume", "Use Resume", or "Upload Resume" when there is a manual option.
+4. Never choose "Sign In" unless signing in is required and there is no way to continue manually.
+5. Never choose navigation links like Careers, Home, Job Search, Back, Cancel, or Privacy Policy.
+6. Choose the element index from all_elements.
+
+Examples:
+- If the page has "Apply Manually" and "Autofill with Resume", choose "Apply Manually".
+- If the page has "Apply Now", choose "Apply Now".
+- If the page has "Save and Continue", choose "Save and Continue".
+- If the page is not an application page, return application_page = False.
+
+body_text:
+{json.dumps(body_text, indent=2)}
+
+all_elements:
+{json.dumps(all_elements, indent=2)}
+"""
+
+    response = apply_process_llm.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{screenshot_base64}"
+                    }
+                }
+            ]
+        }
+    ])
+
+    application_page = response["application_page"]
+    index_number = response["index_number"]
+    reason = response["reason"]
+
+    print(reason)
+
+    state["apply_process"] = {
+        "application_page": application_page,
+        "index_number": index_number,
+        "reason": reason
+    }
+
+    return state
+
+def apply_action(state: ApplicationState):
+    page = state["current_page"]["page"]
+    clickables = state["all_elements_clickables"]
+    apply_process = state["apply_process"]
+
+    application_page = apply_process["application_page"]
+    index_number = apply_process["index_number"]
+
+    print(application_page)
+    print(index_number)
+
+    if index_number is None or application_page == False:
+        state["previous_action"] = "error"
+        return state
+
+    click = clickables.nth(index_number)
+    print(click)
+
+    try:
+        with page.expect_popup(timeout=5000) as popup_info:
+            click.click()
+
+        new_page = popup_info.value
+        new_page.wait_for_load_state("networkidle", timeout=5000)
+
+        state["current_page"]["page"] = new_page
+        state["current_page"]["url"] = new_page.url
+
+    except TimeoutError:
+        try:
+            click.click()
+            page.wait_for_load_state("networkidle", timeout=20000)
+
+            state["current_page"]["page"] = page
+            state["current_page"]["url"] = page.url
+
+        except TimeoutError:
+            state["previous_action"] = "error"
+            return state
+
+    return state
 
 def front_page_decision(state: ApplicationState):
 
@@ -142,11 +255,13 @@ Front Page:
     print(state["ai_decision"])
     return state
 
-decide_page_llm = llm.with_structured_output(DecidePage)
-
+def get_page_screenshot_base64(page):
+    screenshot_bytes = page.screenshot(full_page=False)
+    screenshot_base64 = base64.b64encode(screenshot_bytes).decode("utf-8")
+    return screenshot_base64
 
 def decide_page(state: ApplicationState):
-    action = state.get("action") or None
+    action = state.get("decide_page", {}).get("action", None)
 
     if action == "error":
         print("An error has occurred in one of the previous pages")
@@ -160,33 +275,62 @@ def decide_page(state: ApplicationState):
     get_all_elements(state)
     all_elements = state["all_elements"]
 
-    prompt = f"""
-Your job is to look at the body text and all the elements to determine what type of page this is.
+    screenshot_base64 = get_page_screenshot_base64(page)
 
-- apply: You only choose this page if this is the opening page where we need to click apply now.
-- signup: You only choose this page strictly if we are going to sign up or login into a page.
-- forms: You only choose this page if there are forms to fill out like asking personal questions about the user for the user's application.
-- middle: You choose this page if there are neither forms to fill out nor a page to sign up. An example would be if we needed to choose to apply manually or click one button.
-- cookies: You choose this page when there are cookies that are present that need to be accepted to be able to continue.
+    prompt = f"""
+Your job is to look at the body text, all the elements, and the screenshot to determine what type of page this is, make sure 
+you use common sense when choosing which type of page it is as well.
+
+- apply: You choose this page if this is the opening page where we need to click apply now or start the application process.
+- signup: You choose this page strictly if we are required to sign up or login before continuing.
+- forms: You choose this page if there are forms to fill out like asking personal questions about the user for the user's application.
+- cookies: You choose this page when there are cookies that are present that need to be accepted/continued/yes to be able to continue.
 - verification: This is a verification code page and we need to retrieve numbers to verify our existence.
 - other: This page needs a custom action.
 - error: There is an error and we should leave.
 
-body_text: {json.dumps(body_text, indent=2)}
-all_elements: {json.dumps(all_elements, indent=2)}
+body_text:
+{json.dumps(body_text, indent=2)}
+
+all_elements:
+{json.dumps(all_elements, indent=2)}
 """
 
-    response = decide_page_llm.invoke(prompt)
+    response = decide_page_llm.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{screenshot_base64}"
+                    }
+                }
+            ]
+        }
+    ])
 
-    action = response["action"]
-    action_reason = response["action_reason"]
+    raw = response["raw"]
+    decision = response["parsed"]
+
+    usage = raw.response_metadata.get("token_usage", {})
+    print("\nDECIDE PAGE TOKEN USAGE")
+    print(f"Prompt tokens: {usage.get('prompt_tokens')}")
+    print(f"Completion tokens: {usage.get('completion_tokens')}")
+    print(f"Total tokens: {usage.get('total_tokens')}")
+
+    action = decision["action"]
+    action_reason = decision["action_reason"]
 
     state["decide_page"] = {
         "action": action,
         "action_reason": action_reason
     }
 
-    return action
+    print(state["decide_page"])
+
+    return state
 
 def click_page(state: ApplicationState):
     page = state["current_page"]["page"]
@@ -714,7 +858,7 @@ Incorrect response:
 
     return state
 
-def process_cookies(state: ApplicationState):
+def cookies_process(state: ApplicationState):
     page = state["current_page"]["page"]
 
     get_all_elements(state)
@@ -749,7 +893,6 @@ all_elements:
 """
 
     response = cookies_process_llm.invoke(prompt)
-    print(response)
 
     state["cookies_response"] = response
     print(state["cookies_response"])
@@ -791,7 +934,7 @@ def cookies_action(state: ApplicationState):
 
         state["current_page"]["url"] = page.url
 
-    return action
+    return state
 
 def get_all_select(state: ApplicationState):
     page = state["current_page"]["page"]
@@ -1277,3 +1420,25 @@ state = front_page_elements({}, url)
 print(state["current_page"])
 
 print("Hello")
+
+def opening_page(state: ApplicationState):
+    with Stealth().use_sync(sync_playwright()) as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_content()
+        page = browser.new_page()
+        page.goto(url)
+        state["current_page"]["page"] = page
+        state["current_page"]["url"] = page.url
+        state["current_page"]["browser"] = browser
+        state["current_page"]["context"] = context
+
+
+
+from langgraph.graph import StateGraph, START, END
+
+graph = StateGraph(ApplicationState)
+
+graph.add_node("opening_page", opening_page)
+graph.add_node("decide_page", decide_page)
+graph.add_node("apply_process", apply_process)
+graph.add_node("cookies_process", cookies_process)
