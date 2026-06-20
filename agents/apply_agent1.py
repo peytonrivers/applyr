@@ -20,7 +20,7 @@ from playwright.sync_api import TimeoutError
 import random
 import json
 import time
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage
 
 from langchain_openai import ChatOpenAI
 
@@ -37,6 +37,7 @@ structured_llm = llm.with_structured_output(ClickAction)
 multiple_question_llm = llm.with_structured_output(MultipleQuestion)
 all_elements_llm = llm.with_structured_output(AllElements)
 cookies_process_llm = llm.with_structured_output(CookiesProcess)
+decide_page_llm = llm.with_structured_output(DecidePage)
 
 url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
 
@@ -89,10 +90,9 @@ def front_page_elements(state: ApplicationState, url):
         state["front_page"] = json.dumps(elements)
         response = front_page_decision(state)
         state = click_page(response)
-        state1 = get_all_elements(state)
-        state2 = ai_all_elements(state1)
-        print(state["follow_through_element"])
-        print(state["follow_through_reason"])
+        print(state["current_page"])
+        state1 = process_cookies(state)
+        state2 = cookies_action(state1)
 
         return state
 
@@ -142,6 +142,52 @@ Front Page:
     print(state["ai_decision"])
     return state
 
+decide_page_llm = llm.with_structured_output(DecidePage)
+
+
+def decide_page(state: ApplicationState):
+    action = state.get("action") or None
+
+    if action == "error":
+        print("An error has occurred in one of the previous pages")
+        browser = state["current_page"]["browser"]
+        browser.close()
+        return "error"
+
+    page = state["current_page"]["page"]
+    body_text = page.locator("body").inner_text() or ""
+
+    get_all_elements(state)
+    all_elements = state["all_elements"]
+
+    prompt = f"""
+Your job is to look at the body text and all the elements to determine what type of page this is.
+
+- apply: You only choose this page if this is the opening page where we need to click apply now.
+- signup: You only choose this page strictly if we are going to sign up or login into a page.
+- forms: You only choose this page if there are forms to fill out like asking personal questions about the user for the user's application.
+- middle: You choose this page if there are neither forms to fill out nor a page to sign up. An example would be if we needed to choose to apply manually or click one button.
+- cookies: You choose this page when there are cookies that are present that need to be accepted to be able to continue.
+- verification: This is a verification code page and we need to retrieve numbers to verify our existence.
+- other: This page needs a custom action.
+- error: There is an error and we should leave.
+
+body_text: {json.dumps(body_text, indent=2)}
+all_elements: {json.dumps(all_elements, indent=2)}
+"""
+
+    response = decide_page_llm.invoke(prompt)
+
+    action = response["action"]
+    action_reason = response["action_reason"]
+
+    state["decide_page"] = {
+        "action": action,
+        "action_reason": action_reason
+    }
+
+    return action
+
 def click_page(state: ApplicationState):
     page = state["current_page"]["page"]
     clickables = page.locator("""
@@ -156,16 +202,20 @@ def click_page(state: ApplicationState):
     click = clickables.nth(index)
     try:
         with page.expect_popup() as new_page:
+            print("this is how we do it")
             click.click()
         new_page = new_page.value
+        print("this is how we do it 2")
         new_page.wait_for_load_state("networkidle")
         time.sleep(5)
+        print(new_page.url)
         state["current_page"]["page"] = new_page
         state["current_page"]["url"] = new_page.url
-        print("Current Page: " + state["current_page"]["page"])
-        print("Current Url: " + state["current_page"]["url"])
+        print(f"Current Page: {state["current_page"]["page"]}")
+        print(f"Current Url: {state["current_page"]["url"]}")
         return state
     except Exception:
+        print("")
         page.wait_for_load_state("networkidle")
         state["current_page"]["page"] = page
         state["current_page"]["url"] = page.url
@@ -699,8 +749,10 @@ all_elements:
 """
 
     response = cookies_process_llm.invoke(prompt)
+    print(response)
 
-    state["cookies_process"] = response
+    state["cookies_response"] = response
+    print(state["cookies_response"])
 
     return state
 
@@ -710,7 +762,7 @@ def cookies_action(state: ApplicationState):
 
     clickables = state["all_elements_clickables"]
 
-    cookies_process = state["cookies_process"]
+    cookies_process = state["cookies_response"]
 
     follow_through_index = cookies_process["follow_through_index"]
     action = cookies_process["action"]
