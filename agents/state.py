@@ -21,6 +21,39 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import AnyMessage, SystemMessage, AIMessage, HumanMessage, ToolMessage
 from playwright.sync_api import Locator
 
+class FormsAction(TypedDict):
+    action: Literal[
+        "fill_text",
+        "choose_options",
+        "check_box",
+        "click_button",
+        "upload_resume",
+        "upload_cover_letter",
+        "open_more_context",
+        "skip"
+    ]
+    answer: str | None
+    option_answer_index: list[int] | None
+    needs_options: bool
+    needs_parent_elements: bool
+    needs_sister_elements: bool
+    needs_children_elements: bool
+    reason: str
+
+class SignupProcess(TypedDict):
+    input_indexes: list[int] | None
+    input_indexes_reason: str
+    radio_indexes: list[int] | None
+    radio_indexes_reason: str
+    checkbox_indexes: list[int] | None
+    checkbox_indexes_reason: str
+    select_indexes: list[int] | None
+    select_indexes_reason: str
+    datalist_indexes: list[int] | None
+    datalist_indexes_reason: str
+    follow_through_element: int | None
+    follow_through_reason: str
+
 class ApplyProcess(TypedDict):
     application_page: bool
     index_number: int | None
@@ -68,6 +101,8 @@ class ClickAction(TypedDict):
 class CurrentPage(TypedDict):
     page: str | None
     url: str | None
+    browser: str | None
+    context: str | None
 
 class MiddlePageDecision(TypedDict):
     action: Literal["apply", "signup", "forms", "cookies", "other", "error"]
@@ -112,7 +147,7 @@ class ApplicationState(TypedDict):
     cover_letter_upload: str | None
 
     # ── Job Info ───────────────────────────────────
-    job_url: str
+    url: str
     company_name: str | None
     company_position: str | None
 
@@ -127,20 +162,25 @@ class ApplicationState(TypedDict):
     retry_count: int
 
     previous_action: Literal["apply", "signup", "forms", "cookies", "verification", "other", "error"] | None
+    signup_process: SignupProcess
     apply_process: ApplyProcess
     decide_page: DecidePage
     cookies_response: CookiesProcess
-    all_elements_clickables: Locator
-    radio_elements_clickables: Locator
-    checkbox_elements_clickables: Locator
     front_page: str
     body_text: str
     ai_decision: ClickAction
     all_elements: list[dict]
+    all_elements_clickables: Locator
     follow_through_element: dict
     follow_through_reason: str
     radio_elements: list[dict]
+    radio_elements_clickables: Locator
     checkbox_elements: list[dict]
+    checkbox_elements_clickables: Locator
+    select_elements: list[dict]
+    select_elements_clickables: Locator
+    datalist_elements: list[dict]
+    datalist_elements_clickables: Locator
 
     # ── Messages ───────────────────────────────────
     messages: Annotated[list[AnyMessage], add_messages]

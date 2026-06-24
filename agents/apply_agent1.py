@@ -21,7 +21,7 @@ import random
 import json
 import time
 import base64
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction
 
 from langchain_openai import ChatOpenAI
 
@@ -40,6 +40,8 @@ all_elements_llm = llm.with_structured_output(AllElements)
 cookies_process_llm = llm.with_structured_output(CookiesProcess)
 decide_page_llm = llm.with_structured_output(DecidePage, include_raw=True)
 apply_process_llm = llm.with_structured_output(ApplyProcess)
+signup_process_llm = llm.with_structured_output(SignupProcess)
+forms_action_llm = llm.with_structured_output(FormsAction)
 
 url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
 
@@ -93,7 +95,7 @@ def front_page_elements(state: ApplicationState, url):
         response = front_page_decision(state)
         state = click_page(response)
         print(state["current_page"])
-        state1 = process_cookies(state)
+        state1 = cookies_process(state)
         state2 = cookies_action(state1)
         state3 = decide_page(state2)
         state4 = apply_process(state3)
@@ -164,6 +166,8 @@ all_elements:
         "index_number": index_number,
         "reason": reason
     }
+
+    apply_action(state)
 
     return state
 
@@ -260,7 +264,21 @@ def get_page_screenshot_base64(page):
     screenshot_base64 = base64.b64encode(screenshot_bytes).decode("utf-8")
     return screenshot_base64
 
+def wait_until_page_ready(page, timeout=20000):
+    page.wait_for_load_state("domcontentloaded", timeout=timeout)
+
+    try:
+        page.wait_for_load_state("networkidle", timeout=timeout)
+    except TimeoutError:
+        pass
+
+    page.wait_for_function(
+        """() => document.body && document.body.innerText.trim().length > 50""",
+        timeout=timeout
+    )
+
 def decide_page(state: ApplicationState):
+    time.sleep(5)
     action = state.get("decide_page", {}).get("action", None)
 
     if action == "error":
@@ -270,6 +288,12 @@ def decide_page(state: ApplicationState):
         return "error"
 
     page = state["current_page"]["page"]
+
+    try:
+        wait_until_page_ready(page)
+    except TimeoutError:
+        print("Page may not be fully ready, continuing anyway...")
+        time.sleep(3)
     body_text = page.locator("body").inner_text() or ""
 
     get_all_elements(state)
@@ -282,7 +306,7 @@ Your job is to look at the body text, all the elements, and the screenshot to de
 you use common sense when choosing which type of page it is as well.
 
 - apply: You choose this page if this is the opening page where we need to click apply now or start the application process.
-- signup: You choose this page strictly if we are required to sign up or login before continuing.
+- signup: You choose this page strictly if we are required to sign up or login before continuing or if we have to create an account.
 - forms: You choose this page if there are forms to fill out like asking personal questions about the user for the user's application.
 - cookies: You choose this page when there are cookies that are present that need to be accepted/continued/yes to be able to continue.
 - verification: This is a verification code page and we need to retrieve numbers to verify our existence.
@@ -332,6 +356,14 @@ all_elements:
 
     return state
 
+def decide_routing(state: ApplicationState):
+    try:
+        action = state["decide_page"]["action"]
+        return action
+    except Exception:
+        return "error"
+        
+
 def click_page(state: ApplicationState):
     page = state["current_page"]["page"]
     clickables = page.locator("""
@@ -377,45 +409,40 @@ def get_all_elements(state: ApplicationState):
     clickables = page.locator(interactive_elements)
     all_elements = []
     for i in range(clickables.count()):
-        current_element = []
-        click = clickables.nth(i)
-        element_type = click.get_attribute("type")
-        if element_type == "checkbox" or element_type == "radio":
+        element = clickables.nth(i)
+        tag = element.evaluate("el => el.tagName.toLowerCase()")
+        element_type = element.get_attribute("type")
+        if element_type == "radio" or element_type == "checkbox":
             continue
-        tag = click.evaluate("el => el.tagName.toLowerCase()")
         index = i
-        element_id = click.get_attribute("id")
-        role = click.get_attribute("role")
-        aria_label = click.get_attribute("aria-label")
-        name = click.get_attribute("name")
-        placeholder = click.get_attribute("placeholder")
-        value = click.get_attribute("value")
-        text = click.text_content() or ""
-        href = click.get_attribute("href")
-        onclick = click.get_attribute("onclick")
+        raw_text = element.text_content() or ""
+        element_text = raw_text.strip()
+        element_id = element.get_attribute("id")
         label_text = ""
+        
         if element_id:
-            label = page.locator(f'[for="{element_id}"]') or None
+            label = page.locator(f'[for="{element_id}"]')
             if label.count() > 0:
-                label_text = label.first.text_content() or ""
+                raw_label_text = label.text_content() or ""
+                label_text = raw_label_text.strip()
+        element_attributes = element.evaluate("""
+        el => {
+                let elementAttribute = [];
+                for (const attr of el.attributes) {
+                    elementAttribute.push({ name: attr.name, value: attr.value });
+                }
+                return elementAttribute;
+            }
+        """)
         data = {
             "tag": tag,
-            "index": i,
+            "index": index,
             "element_id": element_id,
-            "element_type": element_type,
-            "role": role,
-            "aria_label": aria_label,
-            "name": name,
-            "placeholder": placeholder,
-            "value": value,
-            "href": href,
-            "onclick": onclick,
-            "text": text,
-            "label_text": label_text
+            "text": element_text,
+            "label_text": label_text,
+            "element_attributes": element_attributes
         }
-        current_element.append(data)
-        all_elements.append({"question": None, "option": current_element})
-    state["body_text"] = page.locator("body").inner_text()
+        all_elements.append(data)
     state["all_elements"] = all_elements
     state["all_elements_clickables"] = clickables
     return state
@@ -471,88 +498,131 @@ def get_all_radio(state: ApplicationState):
     clickables = page.locator("""[type="radio"], [role="radio"]""")
     radio_elements = []
     radio_names = []
+
     for i in range(clickables.count()):
         click = clickables.nth(i)
-        name = click.get_attribute("name")
+
+        element_data = click.evaluate("""
+        el => {
+            let attrs = {};
+            for (const attr of el.attributes) {
+                attrs[attr.name] = attr.value;
+            }
+
+            return {
+                tag: el.tagName.toLowerCase(),
+                element_id: attrs.id || null,
+                element_type: attrs.type || null,
+                role: attrs.role || null,
+                aria_label: attrs["aria-label"] || null,
+                name: attrs.name || null,
+                placeholder: attrs.placeholder || null,
+                value: attrs.value || null,
+                href: attrs.href || null,
+                onclick: attrs.onclick || null,
+                text: el.textContent || ""
+            };
+        }
+        """)
+
+        name = element_data["name"]
+
         if name in radio_names:
             continue
         if name:
             radio_names.append(name)
+
         current_radio = []
-        tag = click.evaluate("el => el.tagName.toLowerCase()")
-        index = i
-        element_id = click.get_attribute("id")
-        element_type = click.get_attribute("type")
-        role = click.get_attribute("role")
-        aria_label = click.get_attribute("aria-label")
-        name = click.get_attribute("name")
-        placeholder = click.get_attribute("placeholder")
-        value = click.get_attribute("value")
-        text = click.text_content() or ""
-        href = click.get_attribute("href")
-        onclick = click.get_attribute("onclick")
+
         label_text = ""
+        element_id = element_data["element_id"]
         if element_id:
-            label = page.locator(f'[for="{element_id}"]') or None
+            label = page.locator(f'[for="{element_id}"]')
             if label.count() > 0:
                 label_text = label.first.text_content() or ""
+
         data = {
-            "tag": tag,
+            "tag": element_data["tag"],
             "index": i,
-            "element_id": element_id,
-            "element_type": element_type,
-            "role": role,
-            "aria_label": aria_label,
-            "name": name,
-            "placeholder": placeholder,
-            "value": value,
-            "href": href,
-            "onclick": onclick,
-            "text": text,
+            "element_id": element_data["element_id"],
+            "element_type": element_data["element_type"],
+            "role": element_data["role"],
+            "aria_label": element_data["aria_label"],
+            "name": element_data["name"],
+            "placeholder": element_data["placeholder"],
+            "value": element_data["value"],
+            "href": element_data["href"],
+            "onclick": element_data["onclick"],
+            "text": element_data["text"],
             "label_text": label_text
         }
+
         current_radio.append(data)
+
         for l in range(clickables.count()):
             if i == l:
                 continue
+
             click2 = clickables.nth(l)
-            name2 = click2.get_attribute("name")
+
+            element_data2 = click2.evaluate("""
+            el => {
+                let attrs = {};
+                for (const attr of el.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+
+                return {
+                    tag: el.tagName.toLowerCase(),
+                    element_id: attrs.id || null,
+                    element_type: attrs.type || null,
+                    role: attrs.role || null,
+                    aria_label: attrs["aria-label"] || null,
+                    name: attrs.name || null,
+                    placeholder: attrs.placeholder || null,
+                    value: attrs.value || null,
+                    href: attrs.href || null,
+                    onclick: attrs.onclick || null,
+                    text: el.textContent || ""
+                };
+            }
+            """)
+
+            name2 = element_data2["name"]
+
             if name != name2:
                 continue
-            tag2 = click2.evaluate("el => el.tagName.toLowerCase()")
-            element_id2 = click2.get_attribute("id")
-            element_type2 = click2.get_attribute("type")
-            role2 = click2.get_attribute("role")
-            aria_label2 = click2.get_attribute("aria-label")
-            name2 = click2.get_attribute("name")
-            placeholder2 = click2.get_attribute("placeholder")
-            value2 = click2.get_attribute("value")
-            href2 = click2.get_attribute("href")
-            onclick2 = click2.get_attribute("onclick")
-            text2 = click2.text_content() or ""
+
             label_text2 = ""
+            element_id2 = element_data2["element_id"]
             if element_id2:
                 label2 = page.locator(f'[for="{element_id2}"]')
                 if label2.count() > 0:
-                    label_text2 = label2.text_content() or ""
+                    label_text2 = label2.first.text_content() or ""
+
             data2 = {
-                "tag": tag2,
+                "tag": element_data2["tag"],
                 "index": l,
-                "element_id": element_id2,
-                "element_type": element_type2,
-                "role": role2,
-                "aria_label": aria_label2,
-                "name": name2,
-                "placeholder": placeholder2,
-                "value": value2,
-                "href": href2,
-                "onclick": onclick2,
-                "text": text2,
+                "element_id": element_data2["element_id"],
+                "element_type": element_data2["element_type"],
+                "role": element_data2["role"],
+                "aria_label": element_data2["aria_label"],
+                "name": element_data2["name"],
+                "placeholder": element_data2["placeholder"],
+                "value": element_data2["value"],
+                "href": element_data2["href"],
+                "onclick": element_data2["onclick"],
+                "text": element_data2["text"],
                 "label_text": label_text2
             }
-            current_radio.append(data2)
-        radio_elements.append({"grouping": name, "question": None, "options": current_radio})
 
+            current_radio.append(data2)
+
+        radio_elements.append({
+            "grouping": name,
+            "question": None,
+            "options": current_radio
+        })
 
     state["radio_elements"] = radio_elements
     state["radio_elements_clickables"] = clickables
@@ -665,45 +735,60 @@ def get_all_checkboxes(state: ApplicationState):
 
     for i in range(clickables.count()):
         click = clickables.nth(i)
-        name = click.get_attribute("name")
+
+        element_data = click.evaluate("""
+        el => {
+            let attrs = {};
+            for (const attr of el.attributes) {
+                attrs[attr.name] = attr.value;
+            }
+
+            return {
+                tag: el.tagName.toLowerCase(),
+                element_id: attrs.id || null,
+                element_type: attrs.type || null,
+                role: attrs.role || null,
+                aria_label: attrs["aria-label"] || null,
+                name: attrs.name || null,
+                placeholder: attrs.placeholder || null,
+                value: attrs.value || null,
+                href: attrs.href || null,
+                onclick: attrs.onclick || null,
+                text: el.textContent || ""
+            };
+        }
+        """)
+
+        name = element_data["name"]
 
         if name in checkbox_names:
             continue
 
-        checkbox_names.append(name)
+        if name:
+            checkbox_names.append(name)
+
         current_checkbox = []
 
-        tag = click.evaluate("el => el.tagName.toLowerCase()")
-        element_id = click.get_attribute("id")
-        input_type = click.get_attribute("type")
-        role = click.get_attribute("role")
-        aria_label = click.get_attribute("aria-label")
-        name = click.get_attribute("name")
-        placeholder = click.get_attribute("placeholder")
-        value = click.get_attribute("value")
-        text = click.text_content() or ""
-        href = click.get_attribute("href")
-        onclick = click.get_attribute("onclick")
-
         label_text = ""
+        element_id = element_data["element_id"]
         if element_id:
             label = page.locator(f'[for="{element_id}"]')
             if label.count() > 0:
                 label_text = label.first.text_content() or ""
 
         data = {
-            "tag": tag,
+            "tag": element_data["tag"],
             "index": i,
-            "element_id": element_id,
-            "element_type": input_type,
-            "role": role,
-            "aria_label": aria_label,
-            "name": name,
-            "placeholder": placeholder,
-            "value": value,
-            "href": href,
-            "onclick": onclick,
-            "text": text,
+            "element_id": element_data["element_id"],
+            "element_type": element_data["element_type"],
+            "role": element_data["role"],
+            "aria_label": element_data["aria_label"],
+            "name": element_data["name"],
+            "placeholder": element_data["placeholder"],
+            "value": element_data["value"],
+            "href": element_data["href"],
+            "onclick": element_data["onclick"],
+            "text": element_data["text"],
             "label_text": label_text
         }
 
@@ -712,39 +797,57 @@ def get_all_checkboxes(state: ApplicationState):
         for l in range(clickables.count()):
             if i == l:
                 continue
+
             click2 = clickables.nth(l)
-            name2 = click2.get_attribute("name")
+
+            element_data2 = click2.evaluate("""
+            el => {
+                let attrs = {};
+                for (const attr of el.attributes) {
+                    attrs[attr.name] = attr.value;
+                }
+
+                return {
+                    tag: el.tagName.toLowerCase(),
+                    element_id: attrs.id || null,
+                    element_type: attrs.type || null,
+                    role: attrs.role || null,
+                    aria_label: attrs["aria-label"] || null,
+                    name: attrs.name || null,
+                    placeholder: attrs.placeholder || null,
+                    value: attrs.value || null,
+                    href: attrs.href || null,
+                    onclick: attrs.onclick || null,
+                    text: el.textContent || ""
+                };
+            }
+            """)
+
+            name2 = element_data2["name"]
+
             if name != name2:
                 continue
-            tag2 = click2.evaluate("el => el.tagName.toLowerCase()")
-            element_id2 = click2.get_attribute("id")
-            element_type2 = click2.get_attribute("type")
-            role2 = click2.get_attribute("role")
-            aria_label2 = click2.get_attribute("aria-label")
-            name2 = click2.get_attribute("name")
-            placeholder2 = click2.get_attribute("placeholder")
-            value2 = click2.get_attribute("value")
-            href2 = click2.get_attribute("href")
-            onclick2 = click2.get_attribute("onclick")
-            text2 = click2.text_content() or ""
+
             label_text2 = ""
+            element_id2 = element_data2["element_id"]
             if element_id2:
                 label2 = page.locator(f'[for="{element_id2}"]')
                 if label2.count() > 0:
-                    label_text2 = label2.text_content() or ""
+                    label_text2 = label2.first.text_content() or ""
+
             data2 = {
-                "tag": tag2,
+                "tag": element_data2["tag"],
                 "index": l,
-                "element_id": element_id2,
-                "element_type": element_type2,
-                "role": role2,
-                "aria_label": aria_label2,
-                "name": name2,
-                "placeholder": placeholder2,
-                "value": value2,
-                "href": href2,
-                "onclick": onclick2,
-                "text": text2,
+                "element_id": element_data2["element_id"],
+                "element_type": element_data2["element_type"],
+                "role": element_data2["role"],
+                "aria_label": element_data2["aria_label"],
+                "name": element_data2["name"],
+                "placeholder": element_data2["placeholder"],
+                "value": element_data2["value"],
+                "href": element_data2["href"],
+                "onclick": element_data2["onclick"],
+                "text": element_data2["text"],
                 "label_text": label_text2
             }
 
@@ -858,6 +961,56 @@ Incorrect response:
 
     return state
 
+def signup_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    get_all_elements(state)
+    get_all_radio(state)
+    get_all_checkboxes(state)
+    get_all_select(state)
+    get_all_datalist(state)
+
+    body_text = page.locator("body").inner_text()
+    all_elements = state["all_elements"]
+    radio_elements = state["radio_elements"]
+    checkbox_elements = state["checkbox_elements"]
+    select_elements = state["select_elements"]
+    datalist_elements = state["datalist_elements"]
+    prompt = f"""
+Your an AI Applicant helper and your job is to look through the elements and body text to return the indexes that we are going to use
+to be able to create an account or signup. Then you are also going to look for the follow through button and return it's index to be able to submit or
+go to the next page.
+
+Ex:
+ {{"input_indexes": [12, 15, 30]}}, {{"input_indexes_reason": The elements contain the input attributes.}} {{"follow_through_element": 49}}, {{"follow_through_reason": It the element name Create account with it's attribute's saying submit.}}
+
+ all_elements: {json.dumps(all_elements)}
+ radio_elements: {json.dumps(radio_elements)}
+ checkbox_elements: {json.dumps(checkbox_elements)}
+ select_elements: {json.dumps(select_elements)}
+ datalist_elements: {json.dumps(datalist_elements)}
+
+ body_text: {json.dumps(body_text)}
+"""
+    response = signup_process_llm.invoke(prompt)
+    state["signup_process"] = {
+        "input_indexes": response["input_indexes"],
+        "input_indexes_reason": response["input_indexes_reason"],
+        "radio_indexes": response["radio_indexes"],
+        "radio_indexes_reason": response["radio_indexes_reason"],
+        "checkbox_indexes": response["checkbox_indexes"],
+        "checkbox_indexes_reason": response["checkbox_indexes_reason"],
+        "select_indexes": response["select_indexes"],
+        "select_indexes_reason": response["select_indexes_reason"],
+        "datalist_indexes": response["datalist_indexes"],
+        "datalist_indexes_reason": response["datalist_indexes_reason"],
+        "follow_through_element": response["follow_through_element"],
+        "follow_through_reason": response["follow_through_reason"]
+    }
+    print(state["signup_process"])
+    return state
+    
+
 def cookies_process(state: ApplicationState):
     page = state["current_page"]["page"]
 
@@ -884,7 +1037,7 @@ Return this exact structure:
   "action": "forms",
   "action_reason": "The page has form fields that need to be filled out."
 }}
-
+ 
 body_text:
 {body_text}
 
@@ -896,6 +1049,8 @@ all_elements:
 
     state["cookies_response"] = response
     print(state["cookies_response"])
+
+    cookies_action(state)
 
     return state
 
@@ -929,8 +1084,8 @@ def cookies_action(state: ApplicationState):
         try:
             page.wait_for_load_state("networkidle", timeout=20000)
         except TimeoutError:
-            state["cookies_response"]["action"] = "error"
-            action = state["cookies_response"]["action"]
+            state["previous_action"] = "error"
+            return state
 
         state["current_page"]["url"] = page.url
 
@@ -945,62 +1100,68 @@ def get_all_select(state: ApplicationState):
     for i in range(clickables.count()):
         click = clickables.nth(i)
 
-        tag = click.evaluate("el => el.tagName.toLowerCase()")
-        element_id = click.get_attribute("id")
-        element_type = click.get_attribute("type")
-        role = click.get_attribute("role")
-        aria_label = click.get_attribute("aria-label")
-        name = click.get_attribute("name")
-        placeholder = click.get_attribute("placeholder")
-        value = click.get_attribute("value")
-        href = click.get_attribute("href")
-        onclick = click.get_attribute("onclick")
-        text = click.text_content() or ""
+        element_data = click.evaluate("""
+        el => {
+            let attrs = {};
+            for (const attr of el.attributes) {
+                attrs[attr.name] = attr.value;
+            }
+
+            let options = [];
+            for (let i = 0; i < el.options.length; i++) {
+                let option = el.options[i];
+
+                options.push({
+                    tag: option.tagName.toLowerCase(),
+                    index: i,
+                    value: option.value || null,
+                    text: option.textContent || ""
+                });
+            }
+
+            return {
+                tag: el.tagName.toLowerCase(),
+                element_id: attrs.id || null,
+                element_type: attrs.type || null,
+                role: attrs.role || null,
+                aria_label: attrs["aria-label"] || null,
+                name: attrs.name || null,
+                placeholder: attrs.placeholder || null,
+                value: el.value || attrs.value || null,
+                href: attrs.href || null,
+                onclick: attrs.onclick || null,
+                text: el.textContent || "",
+                options: options
+            };
+        }
+        """)
 
         label_text = ""
+        element_id = element_data["element_id"]
         if element_id:
             label = page.locator(f'[for="{element_id}"]')
             if label.count() > 0:
                 label_text = label.first.text_content() or ""
 
-        options = click.locator("option")
-        current_options = []
-
-        for l in range(options.count()):
-            option = options.nth(l)
-
-            option_tag = option.evaluate("el => el.tagName.toLowerCase()")
-            option_value = option.get_attribute("value")
-            option_text = option.text_content() or ""
-
-            option_data = {
-                "tag": option_tag,
-                "index": l,
-                "value": option_value,
-                "text": option_text
-            }
-
-            current_options.append(option_data)
-
         data = {
-            "tag": tag,
+            "tag": element_data["tag"],
             "index": i,
-            "element_id": element_id,
-            "element_type": element_type,
-            "role": role,
-            "aria_label": aria_label,
-            "name": name,
-            "placeholder": placeholder,
-            "value": value,
-            "href": href,
-            "onclick": onclick,
-            "text": text,
+            "element_id": element_data["element_id"],
+            "element_type": element_data["element_type"],
+            "role": element_data["role"],
+            "aria_label": element_data["aria_label"],
+            "name": element_data["name"],
+            "placeholder": element_data["placeholder"],
+            "value": element_data["value"],
+            "href": element_data["href"],
+            "onclick": element_data["onclick"],
+            "text": element_data["text"],
             "label_text": label_text,
-            "options": current_options
+            "options": element_data["options"]
         }
 
         select_elements.append({
-            "grouping": name,
+            "grouping": element_data["name"],
             "question": None,
             "options": [data]
         })
@@ -1075,76 +1236,85 @@ def get_all_datalist(state: ApplicationState):
     for i in range(clickables.count()):
         click = clickables.nth(i)
 
-        tag = click.evaluate("el => el.tagName.toLowerCase()")
-        element_id = click.get_attribute("id")
-        element_type = click.get_attribute("type")
-        role = click.get_attribute("role")
-        aria_label = click.get_attribute("aria-label")
-        name = click.get_attribute("name")
-        placeholder = click.get_attribute("placeholder")
-        value = click.get_attribute("value")
-        href = click.get_attribute("href")
-        onclick = click.get_attribute("onclick")
-        text = click.text_content() or ""
+        element_data = click.evaluate("""
+        el => {
+            let attrs = {};
+            for (const attr of el.attributes) {
+                attrs[attr.name] = attr.value;
+            }
+
+            let current_options = [];
+            let list_id = attrs.list || null;
+
+            if (list_id) {
+                let datalist = document.querySelector(`datalist[id="${list_id}"]`);
+
+                if (datalist) {
+                    let options = datalist.querySelectorAll("option");
+
+                    for (let i = 0; i < options.length; i++) {
+                        let option = options[i];
+
+                        current_options.push({
+                            tag: option.tagName.toLowerCase(),
+                            index: i,
+                            value: option.value || null,
+                            text: option.textContent || ""
+                        });
+                    }
+                }
+            }
+
+            return {
+                tag: el.tagName.toLowerCase(),
+                element_id: attrs.id || null,
+                element_type: attrs.type || null,
+                role: attrs.role || null,
+                aria_label: attrs["aria-label"] || null,
+                name: attrs.name || null,
+                placeholder: attrs.placeholder || null,
+                value: attrs.value || el.value || null,
+                href: attrs.href || null,
+                onclick: attrs.onclick || null,
+                text: el.textContent || "",
+                list_id: list_id,
+                options: current_options
+            };
+        }
+        """)
 
         label_text = ""
+        element_id = element_data["element_id"]
         if element_id:
             label = page.locator(f'[for="{element_id}"]')
             if label.count() > 0:
                 label_text = label.first.text_content() or ""
 
-        current_options = []
-
-        list_id = click.get_attribute("list")
-
-        if list_id:
-            datalist = page.locator(f'datalist[id="{list_id}"]')
-
-            if datalist.count() > 0:
-                options = datalist.first.locator("option")
-
-                for l in range(options.count()):
-                    option = options.nth(l)
-
-                    option_tag = option.evaluate("el => el.tagName.toLowerCase()")
-                    option_value = option.get_attribute("value")
-                    option_text = option.text_content() or ""
-
-                    option_data = {
-                        "tag": option_tag,
-                        "index": l,
-                        "value": option_value,
-                        "text": option_text
-                    }
-
-                    current_options.append(option_data)
-
         data = {
-            "tag": tag,
+            "tag": element_data["tag"],
             "index": i,
-            "element_id": element_id,
-            "element_type": element_type,
-            "role": role,
-            "aria_label": aria_label,
-            "name": name,
-            "placeholder": placeholder,
-            "value": value,
-            "href": href,
-            "onclick": onclick,
-            "text": text,
+            "element_id": element_data["element_id"],
+            "element_type": element_data["element_type"],
+            "role": element_data["role"],
+            "aria_label": element_data["aria_label"],
+            "name": element_data["name"],
+            "placeholder": element_data["placeholder"],
+            "value": element_data["value"],
+            "href": element_data["href"],
+            "onclick": element_data["onclick"],
+            "text": element_data["text"],
             "label_text": label_text,
-            "options": current_options
+            "options": element_data["options"]
         }
 
         datalist_elements.append({
-            "grouping": name,
+            "grouping": element_data["name"],
             "question": None,
             "options": [data]
         })
 
     state["datalist_elements"] = datalist_elements
     state["datalist_elements_clickables"] = clickables
-
     return state
 
 def ai_datalist_elements(state: ApplicationState):
@@ -1203,6 +1373,43 @@ Incorrect response:
     state["datalist_elements"] = datalist_elements
 
     return state
+
+def hidden_elements(state: ApplicationState):
+    page = state["current_page"]["page"]
+    elements = """
+[display="none"], [visibility="hidden"], [content-visibility="hidden"], hidden
+"""
+    clickables = page.locator(elements)
+
+def answer_all_elements(state: ApplicationState):
+    page = state["current_page"]["page"]
+    body_text = state["body_text"]
+    all_elements = state["all_elements"]
+    clickables = state["all_elements_clickables"]
+    for i in range(min(len(all_elements),clickables.count())):
+        current_element = all_elements[i]
+        click = clickables.nth(i)
+        prompt = f"""
+Your an AI Applicant helper your job is to look at the current element and the body text and decide the best next action
+- what each action does
+    - fill_text: this is the option if you want to just fill in the element with text.
+    - choose options: you have looked at all the question and all it's options and have determine which option(s) you would like to choose.
+    - check box: you have looked at the question and it's checkboxes and have determine that we should check certain boxes (only use when there are checkboxes present).
+    - click button: this is useful when you just want to click a button.
+    - click & expand: this is useful when you have things like add work experience so you can see all the new elements after clicking.
+    - click & screenshot: this is useful when you are a bit lost and confused and you think clicking and screenshot is the best line of action to help understanding the question and it's options.
+    - upload resume: this is useful when you need to upload the user's resume.
+    - upload cover letter: this is useful when you need to upload the user's cover letter.
+    - screenshot: this is useful when you don't need to click anything but need to screenshot to understand what's going on.
+    - need more content: this is useful when you just need to look at the sister and/or parent and/or child elements and nothing else, you can also call those any time you want.
+    - skip: this is useful if you believe that the question shouldn't be answered because it is not required or that it is not useful to the user's profile.
+    Also when you believe that you have completed the line of action with the element whether you are skipping or you have completed the element that is when you mark the element_continue as True.
+
+current_element: {json.dumps(current_element)}
+body_text: {json.dumps(body_text)}
+"""
+
+
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
@@ -1416,21 +1623,21 @@ def main():
         new_page.wait_for_timeout(7000)
         browser.close()
 
-state = front_page_elements({}, url)
-print(state["current_page"])
-
-print("Hello")
 
 def opening_page(state: ApplicationState):
-    with Stealth().use_sync(sync_playwright()) as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_content()
-        page = browser.new_page()
-        page.goto(url)
-        state["current_page"]["page"] = page
-        state["current_page"]["url"] = page.url
-        state["current_page"]["browser"] = browser
-        state["current_page"]["context"] = context
+    url = state["url"]
+    browser = p.chromium.launch(headless=False)
+    context = browser.new_context()
+    page = browser.new_page()
+    page.goto(url)
+    url = page.url
+    state["current_page"] = {
+        "page": page,
+        "url": url,
+        "browser": browser,
+        "context": context
+    }
+    return state
 
 
 
@@ -1442,3 +1649,21 @@ graph.add_node("opening_page", opening_page)
 graph.add_node("decide_page", decide_page)
 graph.add_node("apply_process", apply_process)
 graph.add_node("cookies_process", cookies_process)
+graph.add_node("signup_process", signup_process)
+
+graph.add_edge(START, "opening_page")
+graph.add_edge("opening_page", "decide_page")
+graph.add_conditional_edges("decide_page", decide_routing, {
+    "apply": "apply_process",
+    "cookies": "cookies_process",
+    "signup": "signup_process",
+    "error": END
+})
+graph.add_edge("apply_process", "decide_page")
+graph.add_edge("cookies_process", "decide_page")
+graph.add_edge("signup_process", END)
+
+mapping = graph.compile()
+
+with Stealth().use_sync(sync_playwright()) as p:
+    mapping.invoke({"url": url})
