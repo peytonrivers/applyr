@@ -1453,6 +1453,7 @@ Also when you believe that you have completed the line of action with the elemen
 
 current_element: {json.dumps(current_element)}
 current_child_elements: {json.dumps(current_child_elements)}
+current_sister_elements: {json.dumps}
 body_text: {json.dumps(body_text)}
 """
         response = forms_action_llm.invoke(prompt)
@@ -1473,19 +1474,28 @@ body_text: {json.dumps(body_text)}
         if action == "click_and_expand":
             current_click.click()
             if needs_child_elements:
-                child_elements = current_click.locator("> *")
-                all_child_elements = []
-                for i in range(child_elements.count()):
-                    element = child_elements.nth(i)
-                    tag = element.evaluate("el => el.tagName.toLowerCase")
-                    index = i
-                    element_id = element.get_attribute("id") or ""
-                    label_text = ""
-                    if element_id:
-                        label = page.locator([f'[for="{element_id}"]'])
-                        if label:
-                            label_text = label.text_content()
-                    attributes = element.evaluate("""
+                get_child_elements(state)
+            if needs_sister_elements:
+                print("hello")
+            if needs_parent_elements:
+                print("hell0")
+
+def get_child_elements(state):
+    page = state["current_page"]
+    current_click = state["current_click"]
+    child_elements = current_click.locator("> *")
+    all_child_elements = []
+    for i in range(child_elements.count()):
+        element = child_elements.nth(i)
+        tag = element.evaluate("el => el.tagName.toLowerCase")
+        index = i
+        element_id = element.get_attribute("id") or ""
+        label_text = ""
+        if element_id:
+            label = page.locator([f'[for="{element_id}"]'])
+            if label:
+                label_text = label.text_content()
+        attributes = element.evaluate("""
 el => {
     let elementAttribute = [];
     for (const attr of el.attributes) {
@@ -1494,14 +1504,15 @@ el => {
     return elementAttribute;
 }                                   
 """)
-                    all_child_elements.append({
-                        "tag": tag,
-                        "index": index,
-                        "element_id": element_id,
-                        "label_text": label_text,
-                        "attributes": attributes
-                    })
-                    state["current_child_element"] = all_child_elements
+        all_child_elements.append({
+            "tag": tag,
+            "index": index,
+            "element_id": element_id,
+            "label_text": label_text,
+            "attributes": attributes
+        })
+        state["current_child_element"] = all_child_elements
+        return state
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
