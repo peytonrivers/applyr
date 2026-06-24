@@ -25,19 +25,23 @@ class FormsAction(TypedDict):
     action: Literal[
         "fill_text",
         "choose_options",
-        "check_box",
+        "check_boxes",
         "click_button",
+        "click_and_expand",
+        "click_and_screenshot",
         "upload_resume",
         "upload_cover_letter",
-        "open_more_context",
+        "need_more_content",
+        "screenshot",
         "skip"
     ]
-    answer: str | None
+    answer_text: str | None
     option_answer_index: list[int] | None
     needs_options: bool
-    needs_parent_elements: bool
-    needs_sister_elements: bool
     needs_children_elements: bool
+    needs_sister_elements: bool
+    needs_parent_elements: bool
+    element_done: bool
     reason: str
 
 class SignupProcess(TypedDict):
@@ -161,6 +165,7 @@ class ApplicationState(TypedDict):
     current_page: CurrentPage
     retry_count: int
 
+    element_action: FormsAction
     previous_action: Literal["apply", "signup", "forms", "cookies", "verification", "other", "error"] | None
     signup_process: SignupProcess
     apply_process: ApplyProcess

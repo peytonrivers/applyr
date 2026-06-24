@@ -353,6 +353,8 @@ all_elements:
     }
 
     print(state["decide_page"])
+    body_text = page.locator("body").inner_text() or ""
+    state["body_text"] = body_text
 
     return state
 
@@ -1386,9 +1388,11 @@ def answer_all_elements(state: ApplicationState):
     body_text = state["body_text"]
     all_elements = state["all_elements"]
     clickables = state["all_elements_clickables"]
-    for i in range(min(len(all_elements),clickables.count())):
+    for i in range(min(len(all_elements), clickables.count())):
         current_element = all_elements[i]
+        state["current_element"] = current_element
         click = clickables.nth(i)
+        state["click"] = click
         prompt = f"""
 Your an AI Applicant helper your job is to look at the current element and the body text and decide the best next action
 - what each action does
@@ -1402,14 +1406,102 @@ Your an AI Applicant helper your job is to look at the current element and the b
     - upload cover letter: this is useful when you need to upload the user's cover letter.
     - screenshot: this is useful when you don't need to click anything but need to screenshot to understand what's going on.
     - need more content: this is useful when you just need to look at the sister and/or parent and/or child elements and nothing else, you can also call those any time you want.
-    - skip: this is useful if you believe that the question shouldn't be answered because it is not required or that it is not useful to the user's profile.
-    Also when you believe that you have completed the line of action with the element whether you are skipping or you have completed the element that is when you mark the element_continue as True.
+    - skip: this is useful if you believe that the element isn't useful, question shouldn't be answered because it is not required, or that it is not useful to the user's profile.
+Also when you believe that you have completed the line of action with the element whether you are skipping or you have completed the element that is when you mark the element_continue as True.
 
 current_element: {json.dumps(current_element)}
 body_text: {json.dumps(body_text)}
 """
+    response = forms_action_llm.invoke(prompt)
+    state["element_action"] = {
+        "action": response["action"],
+        "answer": response["answer"],
+        "option_answer_index": response["option_answer_index"],
+        "needs_options": response["needs_options"],
+        "needs_children_elements": response["needs_children_elements"],
+        "needs_sister_elements": response["needs_sister_elements"],
+        "needs_parent_elements": response["needs_parent_elements"],
+        "element_done": response["element_done"],
+        "reason": response["reason"]
+    }
 
+def process_question(state: ApplicationState):
+    page = state["current_page"]["page"]
+    current_element = state["current_element"]
+    current_click = state["current_click"]
+    current_child_elements = state["current_child_elements"] or ""
+    current_sister_elements = state["current_sister_elements"] or ""
+    current_parent_elements = state["current_parent_elements"] or ""
+    body_text = state["body_text"]
+    tracker = 0
+    for i in range(4):
+        prompt = f"""
+Your an AI Applicant helper your job is to look at the current element and the body text and decide the best next action
+- what each action does
+    - fill_text: this is the option if you want to just fill in the element with text.
+    - choose options: you have looked at all the question and all it's options and have determine which option(s) you would like to choose.
+    - check box: you have looked at the question and it's checkboxes and have determine that we should check certain boxes (only use when there are checkboxes present).
+    - click button: this is useful when you just want to click a button.
+    - click & expand: this is useful when you have things like add work experience so you can see all the new elements after clicking.
+    - click & screenshot: this is useful when you are a bit lost and confused and you think clicking and screenshot is the best line of action to help understanding the question and it's options.
+    - upload resume: this is useful when you need to upload the user's resume.
+    - upload cover letter: this is useful when you need to upload the user's cover letter.
+    - screenshot: this is useful when you don't need to click anything but need to screenshot to understand what's going on.
+    - need more content: this is useful when you just need to look at the sister and/or parent and/or child elements and nothing else, you can also call those any time you want.
+    - continue: this is useful if you believe that the element isn't useful, question shouldn't be answered because it is not required, or that it is not useful to the user's profile.
+Also when you believe that you have completed the line of action with the element whether you are skipping or you have completed the element that is when you mark the element_continue as True.
 
+current_element: {json.dumps(current_element)}
+current_child_elements: {json.dumps(current_child_elements)}
+body_text: {json.dumps(body_text)}
+"""
+        response = forms_action_llm.invoke(prompt)
+        tracker += 1
+        action = response["action"]
+        answer_text = response["action"]
+        option_answer_index = response["option_answer_index"]
+        needs_options = response["needs_options"]
+        needs_child_elements = response["needs_child_elements"]
+        needs_sister_elements = response["needs_sister_elements"]
+        needs_parent_elements = response["needs_parent_element"]
+        element_done = response["element_done"]
+
+        if action == "fill_text":
+            current_click.fill(answer_text)
+        if action == "click":
+            current_click.click()
+        if action == "click_and_expand":
+            current_click.click()
+            if needs_child_elements:
+                child_elements = current_click.locator("> *")
+                all_child_elements = []
+                for i in range(child_elements.count()):
+                    element = child_elements.nth(i)
+                    tag = element.evaluate("el => el.tagName.toLowerCase")
+                    index = i
+                    element_id = element.get_attribute("id") or ""
+                    label_text = ""
+                    if element_id:
+                        label = page.locator([f'[for="{element_id}"]'])
+                        if label:
+                            label_text = label.text_content()
+                    attributes = element.evaluate("""
+el => {
+    let elementAttribute = [];
+    for (const attr of el.attributes) {
+        elementAttribute.push({ name: attr.name, value: attr.value });
+    }
+    return elementAttribute;
+}                                   
+""")
+                    all_child_elements.append({
+                        "tag": tag,
+                        "index": index,
+                        "element_id": element_id,
+                        "label_text": label_text,
+                        "attributes": attributes
+                    })
+                    state["current_child_element"] = all_child_elements
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
