@@ -116,6 +116,32 @@ class CookiesProcess(TypedDict):
     follow_through_index: int | None
     follow_through_reason: str | None
 
+class PageAction(TypedDict):
+    action: Literal[
+        "fill_text",
+        "click",
+        "check_box",
+        "select_option",
+        "upload_resume",
+        "upload_cover_letter",
+        "skip"
+    ]
+    element_index: int | None
+    answer: str | None
+    reason: str
+
+
+class PageDecision(TypedDict):
+    actions_to_take: list[PageAction]
+    page_status: Literal[
+        "continue",
+        "finished",
+        "need_more_context",
+        "error"
+    ]
+    follow_through_element: int | None
+    reason: str
+
 class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────
     user_id: str
@@ -123,6 +149,7 @@ class ApplicationState(TypedDict):
     last_name: str
     preferred_name: str | None
     email: str
+    password: str
     phone_number: str
 
     # ── Address ────────────────────────────────────
@@ -186,6 +213,15 @@ class ApplicationState(TypedDict):
     select_elements_clickables: Locator
     datalist_elements: list[dict]
     datalist_elements_clickables: Locator
+
+    # ── Full Page AI Forms Agent ───────────────────
+    page_decision: PageDecision | None
+    forms_done: bool
+    forms_error: bool
+    needs_more_context: bool
+
+    # ── Token / Cost Tracking ──────────────────────
+    token_usage: dict
 
     # ── Messages ───────────────────────────────────
     messages: Annotated[list[AnyMessage], add_messages]

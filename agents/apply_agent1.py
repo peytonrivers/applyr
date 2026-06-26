@@ -21,7 +21,7 @@ import random
 import json
 import time
 import base64
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision
 
 from langchain_openai import ChatOpenAI
 
@@ -1479,6 +1479,7 @@ body_text: {json.dumps(body_text)}
                 print("hello")
             if needs_parent_elements:
                 print("hell0")
+        
 
 def get_child_elements(state):
     page = state["current_page"]
@@ -1513,6 +1514,534 @@ el => {
         })
         state["current_child_element"] = all_child_elements
         return state
+
+def load_test_user(state: ApplicationState):
+    state["user_id"] = "12345"
+
+    state["first_name"] = "John"
+    state["last_name"] = "Doe"
+    state["preferred_name"] = "John"
+
+    state["email"] = "john.doe@email.com"
+    state["password"] = "Passwor123!"
+    state["phone_number"] = "9195551234"
+
+    state["address_line1"] = "123 Main Street"
+    state["address_line2"] = ""
+    state["city"] = "Charlotte"
+    state["user_state"] = "NC"
+    state["zip_code"] = "28223"
+    state["country"] = "United States"
+
+    state["work_authorized"] = True
+    state["requires_sponsorship"] = False
+    state["veteran"] = False
+    state["disability"] = False
+
+    state["linkedin_url"] = "https://linkedin.com/in/johndoe"
+    state["github_url"] = "https://github.com/johndoe"
+    state["portfolio_url"] = "https://johndoe.dev"
+
+    state["resume_text"] = """
+John Doe
+Software Engineering Student
+
+Education
+UNC Charlotte
+B.S. Computer Science
+
+Skills
+Python
+Java
+SQL
+JavaScript
+FastAPI
+Playwright
+
+Experience
+Software Engineering Intern
+Developed automation tools using Python and Playwright.
+"""
+
+    state["resume_upload"] = "resume.pdf"
+
+    state["cover_letter_text"] = """
+Dear Hiring Manager,
+
+I am excited to apply for this position because I enjoy building automation software and AI systems.
+
+Thank you for your consideration.
+"""
+
+    state["cover_letter_upload"] = "cover_letter.pdf"
+
+    return state
+
+import json
+import time
+from typing import TypedDict, Literal
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
+# IMPORTANT:
+# Use include_raw=True so we can track tokens.
+page_decision_llm = llm.with_structured_output(PageDecision, include_raw=True)
+
+
+# =========================
+# TOKEN TRACKING
+# =========================
+
+def setup_token_usage(state):
+    if "token_usage" not in state:
+        state["token_usage"] = {
+            "calls": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost": 0.0
+        }
+
+    return state
+
+
+def invoke_and_track(llm, prompt, state):
+    setup_token_usage(state)
+
+    response = llm.invoke(prompt)
+
+    raw = response.get("raw")
+    parsed = response.get("parsed")
+
+    usage = {}
+
+    if raw and hasattr(raw, "usage_metadata") and raw.usage_metadata:
+        usage = raw.usage_metadata
+
+    input_tokens = usage.get("input_tokens", 0)
+    output_tokens = usage.get("output_tokens", 0)
+    total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+
+    state["token_usage"]["calls"] += 1
+    state["token_usage"]["input_tokens"] += input_tokens
+    state["token_usage"]["output_tokens"] += output_tokens
+    state["token_usage"]["total_tokens"] += total_tokens
+
+    INPUT_PRICE = 0.05 / 1_000_000
+    OUTPUT_PRICE = 0.40 / 1_000_000
+
+    input_cost = state["token_usage"]["input_tokens"] * INPUT_PRICE
+    output_cost = state["token_usage"]["output_tokens"] * OUTPUT_PRICE
+    total_cost = input_cost + output_cost
+
+    state["token_usage"]["estimated_cost"] = total_cost
+
+    print("\n" + "=" * 70)
+    print(f"LLM CALL #{state['token_usage']['calls']}")
+    print("-" * 70)
+    print("THIS CALL")
+    print(f"Input Tokens : {input_tokens:,}")
+    print(f"Output Tokens: {output_tokens:,}")
+    print(f"Total Tokens : {total_tokens:,}")
+    print("-" * 70)
+    print("RUNNING TOTAL")
+    print(f"Input Tokens : {state['token_usage']['input_tokens']:,}")
+    print(f"Output Tokens: {state['token_usage']['output_tokens']:,}")
+    print(f"Total Tokens : {state['token_usage']['total_tokens']:,}")
+    print(f"Estimated Cost: ${total_cost:.5f}")
+    print("=" * 70 + "\n")
+
+    return parsed
+
+
+def print_final_token_summary(state):
+    usage = state.get("token_usage", {})
+
+    print("\n" + "=" * 70)
+    print("FINAL APPLICATION TOKEN SUMMARY")
+    print("-" * 70)
+    print(f"LLM Calls     : {usage.get('calls', 0):,}")
+    print(f"Input Tokens  : {usage.get('input_tokens', 0):,}")
+    print(f"Output Tokens : {usage.get('output_tokens', 0):,}")
+    print(f"Total Tokens  : {usage.get('total_tokens', 0):,}")
+    print(f"Estimated Cost: ${usage.get('estimated_cost', 0):.5f}")
+    print("=" * 70 + "\n")
+
+
+# =========================
+# GET ALL ELEMENTS
+# =========================
+
+def get_all_elements(state):
+    page = state["current_page"]["page"]
+
+    selector = """
+a[href],
+button,
+input,
+textarea,
+select,
+option,
+[contenteditable="true"],
+[role="button"],
+[role="link"],
+[role="radio"],
+[role="checkbox"],
+[role="combobox"],
+[role="listbox"],
+[role="option"],
+[role="switch"],
+[role="tab"],
+[role="menuitem"],
+[role="menuitemcheckbox"],
+[role="menuitemradio"]
+"""
+
+    clickables = page.locator(selector)
+    all_elements = []
+
+    for i in range(clickables.count()):
+        element = clickables.nth(i)
+
+        try:
+            tag = element.evaluate("el => el.tagName.toLowerCase()")
+        except:
+            tag = ""
+
+        element_id = element.get_attribute("id") or ""
+        element_type = element.get_attribute("type") or ""
+        role = element.get_attribute("role") or ""
+        aria_label = element.get_attribute("aria-label") or ""
+        name = element.get_attribute("name") or ""
+        placeholder = element.get_attribute("placeholder") or ""
+        value = element.get_attribute("value") or ""
+        href = element.get_attribute("href") or ""
+        onclick = element.get_attribute("onclick") or ""
+
+        try:
+            text = element.text_content() or ""
+        except:
+            text = ""
+
+        label_text = ""
+        if element_id:
+            label = page.locator(f'[for="{element_id}"]')
+            if label.count() > 0:
+                label_text = label.text_content() or ""
+
+        try:
+            attributes = element.evaluate("""
+el => [...el.attributes].map(attr => ({
+    name: attr.name,
+    value: attr.value
+}))
+""")
+        except:
+            attributes = []
+
+        all_elements.append({
+            "index": i,
+            "tag": tag,
+            "element_id": element_id,
+            "element_type": element_type,
+            "role": role,
+            "aria_label": aria_label,
+            "name": name,
+            "placeholder": placeholder,
+            "value": value,
+            "href": href,
+            "onclick": onclick,
+            "text": text.strip(),
+            "label_text": label_text.strip(),
+            "attributes": attributes
+        })
+
+    state["all_elements"] = all_elements
+    state["all_elements_clickables"] = clickables
+    state["body_text"] = page.locator("body").inner_text() or ""
+
+    return state
+
+
+# =========================
+# AI PAGE DECISION
+# =========================
+
+def ai_page_decision(state):
+    body_text = state["body_text"]
+    all_elements = state["all_elements"]
+    user_profile = {
+        "user_id": state.get("user_id"),
+        "first_name": state.get("first_name"),
+        "last_name": state.get("last_name"),
+        "preferred_name": state.get("preferred_name"),
+        "email": state.get("email"),
+        "phone_number": state.get("phone_number"),
+
+        "address_line1": state.get("address_line1"),
+        "address_line2": state.get("address_line2"),
+        "city": state.get("city"),
+        "user_state": state.get("user_state"),
+        "zip_code": state.get("zip_code"),
+        "country": state.get("country"),
+
+        "work_authorized": state.get("work_authorized"),
+        "requires_sponsorship": state.get("requires_sponsorship"),
+        "veteran": state.get("veteran"),
+        "disability": state.get("disability"),
+
+        "linkedin_url": state.get("linkedin_url"),
+        "github_url": state.get("github_url"),
+        "portfolio_url": state.get("portfolio_url"),
+
+        "resume_text": state.get("resume_text"),
+        "resume_upload": state.get("resume_upload"),
+        "cover_letter_text": state.get("cover_letter_text"),
+        "cover_letter_upload": state.get("cover_letter_upload"),
+
+        "url": state.get("url"),
+        "company_name": state.get("company_name"),
+        "company_position": state.get("company_position"),
+    }
+
+    prompt = f"""
+You are an AI Applicant Helper.
+
+You are given the entire page text and every interactive element on the page.
+
+Your job is to decide every useful action needed on this page.
+
+You can:
+- fill text inputs
+- click buttons
+- click radio buttons
+- check checkboxes
+- select dropdown options
+- upload resume
+- upload cover letter
+- skip useless elements
+- decide if the page should continue, finish, ask for more context, or error
+- decide the continue/save/next/submit button
+
+Rules:
+- Look at the entire page before deciding.
+- Use the element indexes from all_elements.
+- Do not click destructive actions.
+- Do not click random links.
+- Do not submit the final application unless the page clearly says submit and all required fields are complete.
+- Only answer questions that are required or useful.
+- If a field is already filled, skip it.
+- For dropdowns, use select_option.
+- For checkboxes, use check_box.
+- For radio buttons or normal buttons, use click.
+- For file inputs, use upload_resume or upload_cover_letter.
+- If the page needs to move forward, set page_status to "continue" and set follow_through_element.
+- If the application/forms are fully done, set page_status to "finished".
+- If the page is confusing and needs screenshot/html refresh, set page_status to "need_more_context".
+- If the page is broken or impossible, set page_status to "error".
+
+Return this exact structure:
+{{
+    "actions_to_take": [
+        {{
+            "action": "fill_text",
+            "element_index": 4,
+            "answer": "John",
+            "reason": "This field asks for first name."
+        }}
+    ],
+    "page_status": "continue",
+    "follow_through_element": 22,
+    "reason": "All required fields are complete and the continue button should be clicked."
+}}
+
+user_profile:
+{json.dumps(user_profile, indent=2)}
+
+body_text:
+{json.dumps(body_text)}
+
+all_elements:
+{json.dumps(all_elements, indent=2)}
+"""
+
+    decision = invoke_and_track(page_decision_llm, prompt, state)
+    state["page_decision"] = decision
+
+    print("\nAI PAGE DECISION:")
+    print(json.dumps(decision, indent=2))
+
+    return state
+
+
+# =========================
+# EXECUTE AI ACTIONS
+# =========================
+
+def execute_page_decision(state):
+    page = state["current_page"]["page"]
+    clickables = state["all_elements_clickables"]
+    decision = state["page_decision"]
+
+    actions = decision["actions_to_take"]
+
+    for action_item in actions:
+        action = action_item["action"]
+        index = action_item["element_index"]
+        answer = action_item["answer"]
+
+        if index is None:
+            continue
+
+        element = clickables.nth(index)
+
+        print(f"\nExecuting: {action} on index {index}")
+        print(f"Reason: {action_item['reason']}")
+
+        try:
+            if action == "fill_text":
+                if answer:
+                    element.fill(answer)
+
+            elif action == "click":
+                element.click()
+
+            elif action == "check_box":
+                try:
+                    element.check()
+                except:
+                    element.click()
+
+            elif action == "select_option":
+                if answer:
+                    try:
+                        element.select_option(label=answer)
+                    except:
+                        try:
+                            element.select_option(value=answer)
+                        except:
+                            element.click()
+
+            elif action == "upload_resume":
+                resume_path = state["user_profile"]["resume_path"]
+                element.set_input_files(resume_path)
+
+            elif action == "upload_cover_letter":
+                cover_letter_path = state["user_profile"]["cover_letter_path"]
+                element.set_input_files(cover_letter_path)
+
+            elif action == "skip":
+                continue
+
+            time.sleep(0.3)
+
+        except Exception as e:
+            print(f"Failed action {action} on index {index}: {e}")
+
+    return state
+
+
+# =========================
+# CONTINUE / FINISH PAGE
+# =========================
+
+def continue_or_finish_page(state):
+    page = state["current_page"]["page"]
+    clickables = state["all_elements_clickables"]
+    decision = state["page_decision"]
+
+    page_status = decision["page_status"]
+    follow_through_element = decision["follow_through_element"]
+
+    if page_status == "finished":
+        state["forms_done"] = True
+        print("Forms finished.")
+        return state
+
+    if page_status == "error":
+        state["forms_error"] = True
+        print("Forms error.")
+        return state
+
+    if page_status == "need_more_context":
+        state["needs_more_context"] = True
+        print("Needs more context.")
+        return state
+
+    if page_status == "continue" and follow_through_element is not None:
+        button = clickables.nth(follow_through_element)
+
+        print(f"\nClicking follow-through element: {follow_through_element}")
+
+        try:
+            with page.expect_popup(timeout=5000) as popup_info:
+                button.click()
+
+            new_page = popup_info.value
+            new_page.wait_for_load_state("domcontentloaded", timeout=15000)
+
+            state["current_page"]["page"] = new_page
+            state["current_page"]["url"] = new_page.url
+
+            print(f"Moved to new popup page: {new_page.url}")
+
+        except PlaywrightTimeoutError:
+            try:
+                button.click()
+                page.wait_for_load_state("domcontentloaded", timeout=15000)
+            except:
+                pass
+
+            state["current_page"]["url"] = page.url
+            print(f"Stayed on same page: {page.url}")
+
+    return state
+
+
+# =========================
+# ONE PAGE FORM PROCESS
+# =========================
+
+def complete_current_form_page(state):
+    get_all_elements(state)
+    ai_page_decision(state)
+    execute_page_decision(state)
+    continue_or_finish_page(state)
+
+    return state
+
+
+# =========================
+# FULL APPLICATION FORM LOOP
+# =========================
+
+def complete_application_forms(state):
+    setup_token_usage(state)
+
+    state["forms_done"] = False
+    state["forms_error"] = False
+    state["needs_more_context"] = False
+
+    for page_attempt in range(20):
+        print("\n" + "#" * 70)
+        print(f"FORM PAGE ATTEMPT #{page_attempt + 1}")
+        print("#" * 70)
+
+        complete_current_form_page(state)
+
+        if state.get("forms_done"):
+            break
+
+        if state.get("forms_error"):
+            break
+
+        if state.get("needs_more_context"):
+            break
+
+        time.sleep(1)
+
+    print_final_token_summary(state)
+
+    return state
 
 def main():
     with Stealth().use_sync(sync_playwright()) as p:
@@ -1749,17 +2278,20 @@ from langgraph.graph import StateGraph, START, END
 graph = StateGraph(ApplicationState)
 
 graph.add_node("opening_page", opening_page)
+graph.add_node("load_user", load_test_user)
 graph.add_node("decide_page", decide_page)
 graph.add_node("apply_process", apply_process)
 graph.add_node("cookies_process", cookies_process)
 graph.add_node("signup_process", signup_process)
+graph.add_node("complete_applications", complete_application_forms)
 
-graph.add_edge(START, "opening_page")
+graph.add_edge(START, "load_user")
+graph.add_edge("load_user", "opening_page")
 graph.add_edge("opening_page", "decide_page")
 graph.add_conditional_edges("decide_page", decide_routing, {
     "apply": "apply_process",
     "cookies": "cookies_process",
-    "signup": "signup_process",
+    "signup": "complete_applications",
     "error": END
 })
 graph.add_edge("apply_process", "decide_page")
