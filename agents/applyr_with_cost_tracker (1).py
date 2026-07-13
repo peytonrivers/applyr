@@ -589,6 +589,14 @@ def wait_until_page_ready(page, timeout=20000):
         timeout=timeout
     )
 
+
+def test_omniparser(url: str):
+    with Stealth().use_sync(sync_playwright()) as p:
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page()
+        screenshot = page.screenshot()
+        process
+
 def new_decide_page(state:ApplicationState):
     time.sleep(5)
     action = state.get("decide_page", {}).get("action", None)
