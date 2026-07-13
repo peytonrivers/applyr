@@ -112,6 +112,11 @@ class MiddlePageDecision(TypedDict):
     action: Literal["apply", "signup", "forms", "cookies", "other", "error"]
     action_reason: str
 
+class NewCookiesProcess(TypedDict):
+    width: float
+    height: float
+    reason: str
+
 class CookiesProcess(TypedDict):
     follow_through_index: int | None
     follow_through_reason: str | None
@@ -198,6 +203,7 @@ class ApplicationState(TypedDict):
     apply_process: ApplyProcess
     decide_page: DecidePage
     cookies_response: CookiesProcess
+    new_cookies_response: NewCookiesProcess
     front_page: str
     body_text: str
     ai_decision: ClickAction

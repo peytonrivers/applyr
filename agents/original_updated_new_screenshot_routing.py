@@ -23,21 +23,18 @@ import time
 import base64
 from datetime import datetime
 from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess
-import io
-from PIL import Image, ImageDraw, ImageFont
-import numpy as np
 
 from langchain_openai import ChatOpenAI
-
-from OmniParser.gradio_demo import process
 
 import time
 import os
 from dotenv import load_dotenv
 load_dotenv()
 
+
+
 openai_key = os.getenv("OPENAI_KEY")
-MODEL_NAME = "gpt-5.4-mini"
+MODEL_NAME = "gpt-5.4-nano"
 llm = ChatOpenAI(model=MODEL_NAME, temperature = 0.3, api_key=openai_key)
 structured_llm = llm.with_structured_output(ClickAction, include_raw=True)
 multiple_question_llm = llm.with_structured_output(MultipleQuestion, include_raw=True)
@@ -71,11 +68,6 @@ MODEL_PRICES = {
         "cached_input": 0.025 / 1_000_000,
         "output": 0.40 / 1_000_000,
     },
-    "gpt-5.4-mini": {
-        "input": 0.75 / 1_000_000,
-        "cached_input": 0.075 / 1_000_000,
-        "output": 4.50 / 1_000_000
-    }
 }
 
 
@@ -624,10 +616,12 @@ def new_decide_page(state:ApplicationState):
     print(full_page_height)
     page.set_viewport_size({"width": 1280, "height": full_page_height})
     time.sleep(5)
+    filename = "full_page3.png"
+    page.screenshot(path=filename)
     
     # Force your computer to open and display the image immediately
+    os.startfile(filename) if hasattr(os, 'startfile') else os.system(f"open {filename}")
     screenshot = page.screenshot()
-
     screenshot_bytes = base64.b64encode(screenshot).decode("utf-8")
     prompt = """
 Your an AI Applicant Helper who job is to determine what type of page it is
@@ -636,7 +630,7 @@ Your an AI Applicant Helper who job is to determine what type of page it is
 3. forms - You choose this page if there are forms to fill out like asking personal questions about the user for the user's application.
 4. cookies - You choose this page when there are cookies that are present that need to be accepted/continued/yes to be able to continue, Always choose cookies if there are cookies even if there is an error or page not found.
 5. other - This page needs a custom action.
-6. error - Never choose error.
+6. error - Don't ever choose this.
 """
     response = invoke_and_track(decide_page_llm, [
         {
@@ -744,7 +738,6 @@ all_elements:
 def decide_routing(state: ApplicationState):
     try:
         action = state["decide_page"]["action"]
-        print(f"Routing to action: {action}")
         return action
     except Exception:
         return "error"
@@ -1401,87 +1394,30 @@ def new_cookies_process(state: ApplicationState):
     full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     page.set_viewport_size({"width": 1280, "height": full_page_height})
     screenshot = page.screenshot()
-    with Image.open(io.BytesIO(screenshot)) as img:
-        # Convert to RGBA so it supports transparency blending
-        background = img.convert("RGBA")
-
-    img_width, img_height = background.size
-    width_ratio = (img_width / 1280) * 100
-    height_ratio = (img_height / full_page_height) * 100
-    draw_height_coordinates = []
-
-    # 2. Create a blank transparent overlay of the exact same size
-    overlay = Image.new("RGBA", (img_width, img_height), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-
-    # 3. Lighten the screenshot background first
-    # (255, 255, 255, 140) is White with ~55% opacity. Increase 140 to make it even lighter.
-    draw.rectangle([(0, 0), (img_width, img_height)], fill=(255, 255, 255, 140))
-
-    # Bumped font size slightly up to 16 so the text shows up much bigger over the grid
-    font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", size=18)
-
-    # 4. Run your coordinate calculation and grid plotting loops
-    for j in np.arange(0, img_height, height_ratio):
-        coordinate = round(j, 1)
-        draw_height_coordinates.append(coordinate)
-        coordinates = ([0, coordinate], [img_width, coordinate])
-        # Using RGBA tuple for line color: solid red
-        draw.line(coordinates, fill=(255, 0, 0, 255), width=2)
-
-    for i in np.arange(0, img_width, width_ratio):
-        coordinate = round(i, 1)
-        coordinates = ([coordinate, 0], [coordinate, img_height])
-        # Solid red vertical line
-        draw.line(coordinates, fill=(255, 0, 0, 255), width=2)
-        
-        for l in range(len(draw_height_coordinates)):
-            # Solid black circle
-            draw.circle((round(coordinate), round(draw_height_coordinates[l])), radius=6, fill=(0, 0, 0, 255))
-            # Solid black coordinate text
-            draw.text((coordinate, draw_height_coordinates[l]), f"({coordinate}, {draw_height_coordinates[l]})", fill=(0, 0, 0, 255), font=font)
-
-    # 5. Composite the grid overlay perfectly onto the dimmed background
-    final_img = Image.alpha_composite(background, overlay)
-
-    # 6. Convert back to RGB to display or save
-    final_img = final_img.convert("RGB")
-    final_img.show()
     prompt = f"""
 Your an AI Applicant Helper whose task is to look at the scerenshot that has, 
 the width of: 1280,
 Height of: {full_page_height}
 and your job is to give me the width and height of the coordinates that I need to accept/continue/yes to the cookies that are on the page.
-Look at the coordinates on the picture for you to give me the answer and make sure you have a good reason.
 Ex:
 Width: 200,
 Height 500,
 Reason: The text says accept cookies and the button is located at these coordinates.
 """
-    # 1. Save final_img into a memory buffer as PNG bytes
-    img_byte_arr = io.BytesIO()
-    final_img.save(img_byte_arr, format='PNG')
-    edited_screenshot_bytes = img_byte_arr.getvalue()
-
-    # 2. Encode the newly edited bytes to base64
-    base64_image = base64.b64encode(edited_screenshot_bytes).decode('utf-8')
-
-    # 3. Inject it straight into your API payload
     response = invoke_and_track(new_cookies_process_llm, [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}"
-                        }
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{base64.b64encode(screenshot).decode('utf-8')}"
                     }
-                ]
-            }
-        ], state, "new_cookies_process")
-
+                }
+            ]
+        }
+    ], state, "new_cookies_process")
     state["new_cookies_response"] = {
         "width": response["width"],
         "height": response["height"],
@@ -1491,10 +1427,11 @@ Reason: The text says accept cookies and the button is located at these coordina
     print(width)
     height = response["height"]
     print(height)
-    reason = response["reason"]
-    print(reason)
     page.mouse.click(width, height)
     print("hello")
+    filename = "cookies_clicked.png"
+    page.screenshot(path=filename)
+    os.startfile(filename) if hasattr(os, 'startfile') else os.system(f"open {filename}")
     time.sleep(5)
     return state
 
@@ -2532,15 +2469,24 @@ graph.add_node("complete_applications", complete_application_forms)
 graph.add_edge(START, "load_user")
 graph.add_edge("load_user", "opening_page")
 graph.add_edge("opening_page", "new_decide_page")
+
+# Screenshot-based router.
+# This now routes from new_decide_page instead of the old decide_page.
 graph.add_conditional_edges("new_decide_page", decide_routing, {
     "apply": "apply_process",
     "cookies": "new_cookies_process",
     "signup": "complete_applications",
+    "forms": "complete_applications",
+    "other": END,
     "error": END
 })
-graph.add_edge("apply_process", "decide_page")
+
+# After clicking Apply or handling cookies, re-screenshot the new page.
+graph.add_edge("apply_process", "new_decide_page")
 graph.add_edge("new_cookies_process", "new_decide_page")
-graph.add_edge("signup_process", END)
+
+# Once the form system finishes, end the graph.
+graph.add_edge("complete_applications", END)
 
 mapping = graph.compile()
 
