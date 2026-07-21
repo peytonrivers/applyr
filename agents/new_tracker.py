@@ -26,10 +26,11 @@ from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQue
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+import requests
 
 from langchain_openai import ChatOpenAI
 
-from OmniParser.gradio_demo import process
+
 
 import time
 import os
@@ -49,7 +50,7 @@ apply_process_llm = llm.with_structured_output(ApplyProcess, include_raw=True)
 signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 
-url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
+url = "https://www.allstate.jobs/job/23538686/software-engineer-all-levels-/"
 
 # =========================
 # COST TRACKER
@@ -415,6 +416,34 @@ Literal["apply", "signup", "forms", "cookies", "other", "error"]
 6. error
 """
 
+def image_processor(state: ApplicationState):
+    page = state["current_page"]["page"]
+    page_width = 1280
+    page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    page.set_viewport_size({"width": page_width, "height": page_height})
+    screenshot = page.screenshot()
+    screenshot_bytes = io.BytesIO(screenshot)
+    pillow_image = Image.open(screenshot_bytes)
+    box_threshold = 0.05
+    iou_threshold = 0.1
+    use_paddleocr = True
+    images = 640
+    data = {
+        "pillow_image": pillow_image,
+        "box_threshold": box_threshold,
+        "iou_threshold": iou_threshold,
+        "use_paddleocr": use_paddleocr,
+        "images": images
+    }
+    response = requests.get("your_boy", data)
+    bounding_boxes = response["bounding_boxes"]
+    process_pillow_image = response["image"]
+    buffer = io.BytesIO()
+    process_pillow_image.save(buffer, format="PNG")
+    image_bytes = buffer.getvalue()
+    decoded_image_bytes = base64.b64encode(image_bytes).decode("utf-8")
+    return {"image_bytes": decoded_image_bytes, "process_pillow_image": process_pillow_image}
+
 def apply_process(state: ApplicationState):
     page = state["current_page"]["page"]
     body_text = page.locator("body").inner_text() or ""
@@ -595,7 +624,6 @@ def test_omniparser(url: str):
         browser = p.chromium.launch(headless=False)
         page = browser.new_page()
         screenshot = page.screenshot()
-        process
 
 def new_decide_page(state:ApplicationState):
     time.sleep(5)
