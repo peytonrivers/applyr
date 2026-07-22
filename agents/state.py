@@ -64,7 +64,7 @@ class ApplyProcess(TypedDict):
     reason: str
 
 class DecidePage(TypedDict):
-    action: Literal["apply", "signup", "forms", "cookies", "verification", "other", "error"]
+    action: Literal["apply", "signup", "forms", "cookies", "verification", "error"]
     action_reason: str
 
 class MultipleQuestionItem(TypedDict):
@@ -106,7 +106,6 @@ class CurrentPage(TypedDict):
     page: str | None
     url: str | None
     browser: str | None
-    context: str | None
 
 class MiddlePageDecision(TypedDict):
     action: Literal["apply", "signup", "forms", "cookies", "other", "error"]
@@ -118,7 +117,7 @@ class NewCookiesProcess(TypedDict):
     reason: str
 
 class CookiesProcess(TypedDict):
-    follow_through_index: int | None
+    icon: int | None
     follow_through_reason: str | None
 
 class PageAction(TypedDict):
@@ -135,6 +134,10 @@ class PageAction(TypedDict):
     answer: str | None
     reason: str
 
+class AITokens(TypedDict):
+    input_tokens: int
+    output_tokens: int
+    total_cost: float
 
 class PageDecision(TypedDict):
     actions_to_take: list[PageAction]
@@ -227,7 +230,10 @@ class ApplicationState(TypedDict):
     needs_more_context: bool
 
     # ── Token / Cost Tracking ──────────────────────
-    token_usage: dict
+    token_usage: AITokens
+
+    # AI action
+    action: str
 
     # ── Messages ───────────────────────────────────
     messages: Annotated[list[AnyMessage], add_messages]

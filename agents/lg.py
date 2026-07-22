@@ -22,7 +22,7 @@ import json
 import time
 import base64
 from datetime import datetime
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -30,6 +30,9 @@ import requests
 
 from langchain_openai import ChatOpenAI
 
+from langgraph.graph import StateGraph, START, END
+
+graph = StateGraph(ApplicationState)
 
 
 import time
@@ -50,6 +53,189 @@ apply_process_llm = llm.with_structured_output(ApplyProcess, include_raw=True)
 signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 
-url = "https://www.allstate.jobs/job/23538686/software-engineer-all-levels-/"
+url = "https://www.allstate.jobs/job/23556274/ai-software-engineer/"
 
 print(url.title)
+
+input_cost = 0.20 / 1000000
+output_cost = 1.25 / 1000000
+
+def ai_token_tracker(new_tokens: dict, state: ApplicationState):
+    token_usage = state["token_usage"]
+    input_tokens = token_usage['input_tokens']
+    output_tokens = token_usage["output_tokens"]
+    total_cost = token_usage["total_cost"]
+    new_input_tokens = new_tokens["input_tokens"]
+    new_output_tokens = new_tokens["output_tokens"]
+    input_tokens += new_input_tokens
+    output_tokens += new_output_tokens
+    total = (input_tokens * input_cost) + (output_tokens + output_cost)
+    state["token_usage"] = {
+         "input_tokens": input_tokens,
+         "output_tokens": output_tokens,
+         "total_cost": total
+    }
+    print(f"Total ${total}")
+    return state
+
+def page_loaded(state: ApplicationState):
+    page = state["current_page"]["page"]
+    for i in range(7):
+        time.sleep(3)
+        body_text = page.locator("body").inner_text()
+        if len(body_text) >= 5:
+            return True
+    return False
+
+def screenshot_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+    full_page_width = 1280
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    page.set_viewport_size({"width": full_page_width, "height": full_page_height})
+    screenshot = page.screenshot()
+    encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
+    return encoded_bytes
+
+
+def decide_page(state: ApplicationState):
+    encoded_bytes = screenshot_process(state)
+    prompt = """Your an AI Application Helper and your job is to decide what page this is
+    1. Cookies - You always choose this page if there are cookies on the page
+    2. Application - You choose this page if we need to click apply now, apply manually, or we only need to click one buttton to continue
+    3. Signup - You choose this page if we need to signup or login or create an account for the user.
+    4. Forms - You choose this page if there is forms that need to be filled
+    5. Verification - You choose this page if there is a verification code that needs to be filled out.
+    6. Error - You choose this page if there is an error or the page doesn't exist.
+    """
+    response = decide_page_llm.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{encoded_bytes}"
+                    }
+                }
+            ]
+        }
+    ])
+    details = response["raw"]
+    decision = response["parsed"]
+    new_tokens = details.usage_metadata
+    action = decision["action"]
+    state["action"] = action
+
+    state = ai_token_tracker(new_tokens, state)
+
+    print(f"AI Tokens: {new_tokens}")
+    print(f"AI details: {details}")
+    print(f"AI decision: {decision}")
+    return state
+
+def decide_routing(state: ApplicationState):
+    action = state["action"]
+    
+    if action == "cookies":
+        return "cookies"
+    elif action == "signup":
+        return "signup"
+    elif action == "forms":
+        return "forms"
+    elif action == "application":
+        return "application"
+    elif action == "verification":
+        return "verification"
+    else:
+        # Fallback for "error" or any unexpected value
+        return "end" 
+
+def cookies_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes = screenshot_process(state)
+    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    response = requests.post("https://omniparser.apply-r.com/image_process", json=data)
+    print(response)
+    response_data = response.json()
+    new_bytes = response_data["image"]
+    decoded_new_bytes = base64.b64decode(new_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_new_bytes)
+    image = Image.open(buffer)
+    image.show()
+    boxes_details = response_data["bounding_boxes"]
+    print(f"boxes details: {boxes_details}")
+    prompt = f"""
+Your an AI Applicant Helper and your Job is to pick the icon that will allow you to accept/continue/yes with the cookies.
+Boxes Details: {str(boxes_details)}
+Ex:
+    follow_through_index: 37
+    follow_through_reason: This is because the text said yes with the image showcasing that clicking this element would accept the cookies
+"""
+    ai_response = cookies_process_llm.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{new_bytes}"}}
+                ]}])
+    details = ai_response["raw"]
+    new_tokens = details.usage_metadata
+    state = ai_token_tracker(new_tokens)
+    decision = ai_response["parsed"]
+    icon = decision["icon"]
+    print(f"icon: {icon}")
+    return state
+
+
+
+
+
+"""with Stealth().use_sync(sync_playwright()) as p:
+    browser = p.chromium.launch(headless=False)
+    page = browser.new_page()
+    page.goto(url)
+    print(page.title)
+    time.sleep(3)
+    screenshot = page.screenshot()
+    encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
+    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    response = requests.post("https://omniparser.apply-r.com/image_process",json=data)
+    response_data = response.json()
+    new_bytes = response_data["image"]
+    decoded_new_bytes = base64.b64decode(new_bytes.encode("utf-8"))
+    buffer_bytes = io.BytesIO(decoded_new_bytes)
+    new_image = Image.open(buffer_bytes)
+    new_image.show()
+    print(response_data["bounding_boxes"])"""
+
+
+graph = StateGraph(ApplicationState)
+
+graph.add_node("decide_page", decide_page)
+graph.add_node("cookies_process", cookies_process)
+graph.add_node("decide_routing", decide_routing)
+
+graph.add_edge(START, "decide_page")
+graph.add_conditional_edges("decide_page", decide_routing, {"cookies": "cookies_process", "error": END})
+graph.add_edge("cookies_process", END)
+
+mapping = graph.compile()
+
+def complete_application(url2: str):
+    with Stealth().use_sync(sync_playwright()) as p:
+        browser = p.chromium.launch(headless=False)
+        page = browser.new_page()
+        current_page = {
+            "page": page,
+            "url": url,
+        }
+        page.goto(url)
+        token_usage = {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_cost": 0
+        }
+        mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage})
+
+complete_application(url)

@@ -50,7 +50,7 @@ apply_process_llm = llm.with_structured_output(ApplyProcess, include_raw=True)
 signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 
-url = "https://www.allstate.jobs/job/23538686/software-engineer-all-levels-/"
+url = "https://www.allstate.jobs/job/23556274/ai-software-engineer/"
 
 # =========================
 # COST TRACKER
