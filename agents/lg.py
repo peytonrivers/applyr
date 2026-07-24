@@ -277,14 +277,14 @@ with Stealth().use_sync(sync_playwright()) as p:
     screenshot = page.screenshot()
     encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("https://omniparser.apply-r.com/image_process",json=data)
+    response = requests.post("http://127.0.0.1:8000/image_process",json=data)
     response_data = response.json()
-    new_bytes = response_data["image"]
-    decoded_new_bytes = base64.b64decode(new_bytes.encode("utf-8"))
+    encoded_bytes = response_data["encoded_bytes"]
+    decoded_new_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer_bytes = io.BytesIO(decoded_new_bytes)
     new_image = Image.open(buffer_bytes)
     new_image.show()
-    print(response_data["bounding_boxes"])
+    print(response_data["boxes_details"])
 
 
 graph = StateGraph(ApplicationState)
@@ -317,4 +317,4 @@ def complete_application(url2: str):
         }
         mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage})
 
-complete_application(url)
+# complete_application(url)
