@@ -59,9 +59,8 @@ class SignupProcess(TypedDict):
     follow_through_reason: str
 
 class ApplyProcess(TypedDict):
-    application_page: bool
-    index_number: int | None
-    reason: str
+    icon: int | None
+    icon_reason: str | None
 
 class DecidePage(TypedDict):
     action: Literal["apply", "signup", "forms", "cookies", "verification", "error"]
@@ -118,7 +117,7 @@ class NewCookiesProcess(TypedDict):
 
 class CookiesProcess(TypedDict):
     icon: int | None
-    follow_through_reason: str | None
+    icon_reason: str | None
 
 class PageAction(TypedDict):
     action: Literal[
@@ -135,7 +134,9 @@ class PageAction(TypedDict):
     reason: str
 
 class AITokens(TypedDict):
+    tracker: int
     input_tokens: int
+    cached_tokens: int
     output_tokens: int
     total_cost: float
 

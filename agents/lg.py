@@ -54,24 +54,41 @@ signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 
 url = "https://www.allstate.jobs/job/23556274/ai-software-engineer/"
-
 print(url.title)
 
 input_cost = 0.20 / 1000000
 output_cost = 1.25 / 1000000
+cached_cost = 0.02 / 1000000
 
 def ai_token_tracker(new_tokens: dict, state: ApplicationState):
     token_usage = state["token_usage"]
+    print(f"Token usage: {token_usage}")
+    tracker = token_usage["tracker"]
+    tracker += 1
+    print(f"New count: {tracker}")
     input_tokens = token_usage['input_tokens']
+    cached_tokens = token_usage["cached_tokens"]
     output_tokens = token_usage["output_tokens"]
     total_cost = token_usage["total_cost"]
     new_input_tokens = new_tokens["input_tokens"]
+    new_cached_tokens = new_tokens["input_token_details"]["cache_read"]
+    print(f"new input token details: {new_tokens["input_token_details"]}")
+    print(f"new cached tokens: {new_cached_tokens}")
+    after_new_input_tokens = new_input_tokens - new_cached_tokens
+    print(new_input_tokens)
     new_output_tokens = new_tokens["output_tokens"]
-    input_tokens += new_input_tokens
+    print(new_output_tokens)
+    input_tokens += after_new_input_tokens
+    print(f"Total input tokens: {input_tokens}")
+    cached_tokens += new_cached_tokens
+    print(f"Cached tokens: {cached_tokens}")
     output_tokens += new_output_tokens
-    total = (input_tokens * input_cost) + (output_tokens + output_cost)
+    print(f"Total output tokens: {output_tokens}")
+    total = (input_tokens * input_cost) + (cached_tokens * cached_cost) +(output_tokens * output_cost)
     state["token_usage"] = {
+        "tracker": tracker,
          "input_tokens": input_tokens,
+         "cached_tokens": cached_tokens,
          "output_tokens": output_tokens,
          "total_cost": total
     }
@@ -95,6 +112,12 @@ def screenshot_process(state: ApplicationState):
     screenshot = page.screenshot()
     encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
     return encoded_bytes
+
+def omniparser_process(state: ApplicationState):
+    encoded_bytes = screenshot_process(state)
+    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    response = requests.post("https://omniparser.apply-r.com", json=data)
+    response_data = response.json()
 
 
 def decide_page(state: ApplicationState):
@@ -156,15 +179,10 @@ def cookies_process(state: ApplicationState):
     encoded_bytes = screenshot_process(state)
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("https://omniparser.apply-r.com/image_process", json=data)
-    print(response)
     response_data = response.json()
     new_bytes = response_data["image"]
     decoded_new_bytes = base64.b64decode(new_bytes.encode("utf-8"))
-    buffer = io.BytesIO(decoded_new_bytes)
-    image = Image.open(buffer)
-    image.show()
     boxes_details = response_data["bounding_boxes"]
-    print(f"boxes details: {boxes_details}")
     prompt = f"""
 Your an AI Applicant Helper and your Job is to pick the icon that will allow you to accept/continue/yes with the cookies.
 Boxes Details: {str(boxes_details)}
@@ -181,17 +199,76 @@ Ex:
                 ]}])
     details = ai_response["raw"]
     new_tokens = details.usage_metadata
-    state = ai_token_tracker(new_tokens)
+    print(f"Cookies new tokens: {new_tokens}")
+    state = ai_token_tracker(new_tokens, state)
     decision = ai_response["parsed"]
     icon = decision["icon"]
+    icon_reason = decision["icon_reason"]
+    cookies_action(icon, boxes_details, state)
     print(f"icon: {icon}")
+    print(f"icon reason: {icon_reason}")
     return state
 
 
+def cookies_action(icon: int, boxes_details: json, state: ApplicationState):
+    page = state["current_page"]["page"]
+    full_page_width = 1280
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    clickable_item = boxes_details[icon]
+    coordinates = clickable_item["bbox"]
+    x1 = coordinates[0]
+    y1 = coordinates[1]
+    x2 = coordinates[2]
+    y2 = coordinates[3]
+    middle_x = (x1 + x2) / 2
+    middle_y = (y1 + y2) / 2
+    page_x = (middle_x * full_page_width)
+    page_y = (middle_y * full_page_height)
+    print(f"Clickable item: {clickable_item}")
+    print(f"Coordinates: {coordinates}")
+    try:
+        with page.expect_popup() as new_page:
+            page.mouse.click(page_x, page_y)
+        new_page = new_page.value
+        time.sleep(5)
+    except Exception:
+        page.wait_for_load_state("domcontentloaded")
+        time.sleep(5)
+    screenshot = page.screenshot()
+    buffer = io.BytesIO(screenshot)
+    image = Image.open(buffer)
+    image.show()
+    time.sleep(3)
+    return state
 
 
+def apply_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes = screenshot_process(state)
+    prompt = """
+Your an AI Applicant Helper and your job is to look for the button that with start/continue the application process.
+Usually these buttons contain text like this: 'apply now', 'apply manually', 'apply', 'start application', 'continue application'.
+Always choose to apply manually if the option is there.
+"""
+    response = apply_process_llm.invoke([
+        {"role": "user",
+         "content": [
+             {"type": "text", "text": prompt},
+             {"type": "image", "image": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+         ]
+         }
+    ])
+    details = response["raw"]
+    decision = response["parsed"]
+    new_tokens = details.usage_metadata
+    state = ai_token_tracker(new_tokens=new_tokens, state=state)
+    icon = decision["icon"]
+    icon_reason = decision["icon_reason"]
+    
+def apply_action(icon: str, state: ApplicationState):
+    print("hello")
 
-"""with Stealth().use_sync(sync_playwright()) as p:
+with Stealth().use_sync(sync_playwright()) as p:
     browser = p.chromium.launch(headless=False)
     page = browser.new_page()
     page.goto(url)
@@ -207,7 +284,7 @@ Ex:
     buffer_bytes = io.BytesIO(decoded_new_bytes)
     new_image = Image.open(buffer_bytes)
     new_image.show()
-    print(response_data["bounding_boxes"])"""
+    print(response_data["bounding_boxes"])
 
 
 graph = StateGraph(ApplicationState)
@@ -232,7 +309,9 @@ def complete_application(url2: str):
         }
         page.goto(url)
         token_usage = {
+            "tracker": 0,
             "input_tokens": 0,
+            "cached_tokens": 0,
             "output_tokens": 0,
             "total_cost": 0
         }
