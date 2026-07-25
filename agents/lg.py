@@ -81,7 +81,7 @@ def ai_token_tracker(new_tokens: dict, state: ApplicationState):
     input_tokens += after_new_input_tokens
     print(f"Total input tokens: {input_tokens}")
     cached_tokens += new_cached_tokens
-    print(f"Cached tokens: {cached_tokens}")
+    print(f"Total cached tokens: {cached_tokens}")
     output_tokens += new_output_tokens
     print(f"Total output tokens: {output_tokens}")
     total = (input_tokens * input_cost) + (cached_tokens * cached_cost) +(output_tokens * output_cost)
@@ -115,9 +115,13 @@ def screenshot_process(state: ApplicationState):
 
 def omniparser_process(state: ApplicationState):
     encoded_bytes = screenshot_process(state)
+    print(f"encoded bytes type: {type(encoded_bytes)})")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("https://omniparser.apply-r.com", json=data)
+    response = requests.post("https://omniparser.apply-r.com/image_process", json=data)
     response_data = response.json()
+    encoded_bytes = response_data["encoded_bytes"]
+    boxes_details = response_data["boxes_details"]
+    return encoded_bytes, boxes_details
 
 
 def decide_page(state: ApplicationState):
@@ -159,7 +163,9 @@ def decide_page(state: ApplicationState):
 
 def decide_routing(state: ApplicationState):
     action = state["action"]
-    
+    print(f"Decide routing action: {action}")
+    if action == "apply":
+        return "apply"
     if action == "cookies":
         return "cookies"
     elif action == "signup":
@@ -176,13 +182,7 @@ def decide_routing(state: ApplicationState):
 
 def cookies_process(state: ApplicationState):
     page = state["current_page"]["page"]
-    encoded_bytes = screenshot_process(state)
-    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("https://omniparser.apply-r.com/image_process", json=data)
-    response_data = response.json()
-    new_bytes = response_data["image"]
-    decoded_new_bytes = base64.b64decode(new_bytes.encode("utf-8"))
-    boxes_details = response_data["bounding_boxes"]
+    encoded_bytes, boxes_details = omniparser_process(state)
     prompt = f"""
 Your an AI Applicant Helper and your Job is to pick the icon that will allow you to accept/continue/yes with the cookies.
 Boxes Details: {str(boxes_details)}
@@ -195,7 +195,7 @@ Ex:
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{new_bytes}"}}
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
                 ]}])
     details = ai_response["raw"]
     new_tokens = details.usage_metadata
@@ -229,7 +229,13 @@ def cookies_action(icon: int, boxes_details: json, state: ApplicationState):
     try:
         with page.expect_popup() as new_page:
             page.mouse.click(page_x, page_y)
+        new_page.wait_for_load_state("domcontentloaded")
         new_page = new_page.value
+        url = new_page.url
+        state["current_page"] = {
+            "page": new_page,
+            "url": url
+        }
         time.sleep(5)
     except Exception:
         page.wait_for_load_state("domcontentloaded")
@@ -243,32 +249,81 @@ def cookies_action(icon: int, boxes_details: json, state: ApplicationState):
 
 
 def apply_process(state: ApplicationState):
+    print(f"Apply process checkpoint 1")
     page = state["current_page"]["page"]
-    encoded_bytes = screenshot_process(state)
-    prompt = """
-Your an AI Applicant Helper and your job is to look for the button that with start/continue the application process.
-Usually these buttons contain text like this: 'apply now', 'apply manually', 'apply', 'start application', 'continue application'.
+    encoded_bytes, boxes_details = omniparser_process(state)
+    print(f"apply process: {boxes_details}")
+    print(f"Apply process checkpoint 2")
+    prompt = f"""
+Your an AI Applicant Helper and your job is to look for the icon that with start/continue the application process.
+Usually these icons content contain text like this: 'apply now', 'apply manually', 'apply', 'start application', 'continue application'.
 Always choose to apply manually if the option is there.
+Your job is to look at the boxes details and to give me the icon that would help me get the application going.
+boxes_details: {boxes_details}
 """
     response = apply_process_llm.invoke([
-        {"role": "user",
-         "content": [
-             {"type": "text", "text": prompt},
-             {"type": "image", "image": {"url": f"data:image/png;base64,{encoded_bytes}"}}
-         ]
-         }
-    ])
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                ]}])
+    print(f"Apply process checkpoint 3")
     details = response["raw"]
     decision = response["parsed"]
     new_tokens = details.usage_metadata
     state = ai_token_tracker(new_tokens=new_tokens, state=state)
     icon = decision["icon"]
+    print(icon)
     icon_reason = decision["icon_reason"]
+    print(icon_reason)
+    state = apply_action(icon=icon, boxes_details=boxes_details, state=state)
+    print(f"Apply process checkpoint 4")
+    return state
     
-def apply_action(icon: str, state: ApplicationState):
-    print("hello")
+def apply_action(icon: int, boxes_details: json, state: ApplicationState):
+    page = state["current_page"]["page"]
+    full_page_width = 1280
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    clickable_item = boxes_details[icon]
+    coordinates = clickable_item["bbox"]
+    x1 = coordinates[0]
+    y1 = coordinates[1]
+    x2 = coordinates[2]
+    y2 = coordinates[3]
+    middle_x = (x1 + x2) / 2
+    middle_y = (y1 + y2) / 2
+    page_x = (middle_x * full_page_width)
+    page_y = (middle_y * full_page_height)
+    print(f"Clickable item: {clickable_item}")
+    print(f"Coordinates: {coordinates}")
+    print(f"Playwright coordinates x: {page_x}, y: {page_y}")
+    try:
+        with page.expect_popup() as new_page:
+            page.mouse.click(page_x, page_y)
+        print(f"old page: {page}")
+        new_page = new_page.value
+        print(f"new page: {new_page}")
+        new_page.wait_for_load_state("domcontentloaded")
+        url = new_page.url
+        print(f"old current page: {state["current_page"]}")
+        state["current_page"] = {
+            "page": new_page,
+            "url": url
+        }
+        print(f"new current page: {state["current_page"]}")
+        time.sleep(5)
+    except Exception:
+        page.wait_for_load_state("domcontentloaded")
+        time.sleep(5)
+    screenshot = page.screenshot()
+    buffer = io.BytesIO(screenshot)
+    image = Image.open(buffer)
+    image.show()
+    time.sleep(7)
+    return state
 
-with Stealth().use_sync(sync_playwright()) as p:
+"""with Stealth().use_sync(sync_playwright()) as p:
     browser = p.chromium.launch(headless=False)
     page = browser.new_page()
     page.goto(url)
@@ -284,7 +339,7 @@ with Stealth().use_sync(sync_playwright()) as p:
     buffer_bytes = io.BytesIO(decoded_new_bytes)
     new_image = Image.open(buffer_bytes)
     new_image.show()
-    print(response_data["boxes_details"])
+    print(response_data["boxes_details"])"""
 
 
 graph = StateGraph(ApplicationState)
@@ -292,10 +347,12 @@ graph = StateGraph(ApplicationState)
 graph.add_node("decide_page", decide_page)
 graph.add_node("cookies_process", cookies_process)
 graph.add_node("decide_routing", decide_routing)
+graph.add_node("apply_process", apply_process)
 
 graph.add_edge(START, "decide_page")
-graph.add_conditional_edges("decide_page", decide_routing, {"cookies": "cookies_process", "error": END})
-graph.add_edge("cookies_process", END)
+graph.add_conditional_edges("decide_page", decide_routing, {"cookies": "cookies_process", "apply": "apply_process", "end": END})
+graph.add_edge("cookies_process", "decide_page")
+graph.add_edge("apply_process", "decide_page")
 
 mapping = graph.compile()
 
@@ -317,4 +374,4 @@ def complete_application(url2: str):
         }
         mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage})
 
-# complete_application(url)
+complete_application(url)
