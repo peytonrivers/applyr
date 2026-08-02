@@ -44,6 +44,15 @@ class FormsAction(TypedDict):
     element_done: bool
     reason: str
 
+class AnswerItem(TypedDict):
+    icon: int | str
+    answer_type: Literal["fill", "click"]
+    answer_text: str
+    reason: str
+
+class QuestionProcess(TypedDict):
+    items: list[dict]
+
 class SignupProcess(TypedDict):
     input_indexes: list[int] | None
     input_indexes_reason: str
