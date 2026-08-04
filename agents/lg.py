@@ -28,6 +28,8 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import requests
 
+from langchain_ollama import ChatOllama
+
 from langchain_openai import ChatOpenAI
 
 from langgraph.graph import StateGraph, START, END
@@ -56,13 +58,12 @@ decide_page_llm = llm.with_structured_output(DecidePage, include_raw=True)
 apply_process_llm = llm.with_structured_output(ApplyProcess, include_raw=True)
 signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
-question_process_llm = llm2.with_structured_output(QuestionProcess, include_raw=True)
-
+question_process_llm2 = llm2.with_structured_output(QuestionProcess, include_raw=True)
 url = "https://www.allstate.jobs/job/23556274/ai-software-engineer/"
 print(url.title)
 
 input_cost = 0.20 / 1000000
-output_cost = 1.20 / 1000000
+output_cost = 1.25 / 1000000
 cached_cost = 0.02 / 1000000
 
 def ai_token_tracker(new_tokens: dict, state: ApplicationState):
@@ -123,7 +124,8 @@ def page_loaded(state: ApplicationState):
 def screenshot_process(state: ApplicationState):
     page = state["current_page"]["page"]
     print(page)
-    page.wait_for_load_state("domcontentloaded")
+    page.wait_for_load_state("load")
+    page_loaded(state=state)
     full_page_width = 1280
     full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     page.set_viewport_size({"width": full_page_width, "height": full_page_height})
@@ -151,6 +153,8 @@ def decide_page(state: ApplicationState):
     4. forms - You choose this page if there is forms that need to be filled
     5. verification - You choose this page if there is a verification code that needs to be filled out, or if you need to verify an email, anything to do with verifying an account.
     6. error - You choose this page if there is an error or the page doesn't exist.
+
+    If cookies are present always choose the cookies option
     """
     response = decide_page_llm.invoke([
         {
@@ -264,13 +268,13 @@ OUTPUT FORMAT
 
 Return:
 
-follow_through_index: <integer icon number>
-follow_through_reason: <brief explanation>
+icon: <integer icon number>
+icon_reason: <brief explanation>
 
 Example:
 
-follow_through_index: 37
-follow_through_reason: Icon 37 says "Accept All Cookies" and is located inside the cookie consent popup.
+icon: 37
+icon_reason: Icon 37 says "Accept All Cookies" and is located inside the cookie consent popup.
 """
 
     ai_response = cookies_process_llm.invoke([
@@ -282,9 +286,8 @@ follow_through_reason: Icon 37 says "Accept All Cookies" and is located inside t
                 ]}])
     details = ai_response["raw"]
     new_tokens = details.usage_metadata
-    print(f"Cookies new tokens: {new_tokens}")
-    state = ai_token_tracker(new_tokens, state)
     decision = ai_response["parsed"]
+    print(f"Ollama Decision: {decision}")
     icon = decision["icon"]
     icon_reason = decision["icon_reason"]
     cookies_action(icon, boxes_details, state)
@@ -330,8 +333,6 @@ def apply_process(state: ApplicationState):
     print(f"Apply process checkpoint 1")
     page = state["current_page"]["page"]
     encoded_bytes, boxes_details = omniparser_process(state)
-    print(f"apply process: {boxes_details}")
-    print(f"Apply process checkpoint 2")
     prompt = f"""
 You are an AI Applicant Helper.
 
@@ -391,12 +392,12 @@ OUTPUT
 Return:
 
 icon: <icon number>
-reason: <brief explanation>
+icon_reason: <brief explanation>
 
 Example:
 
 icon: 17
-reason: The button says "Apply Manually," which is the preferred way to begin the application.
+icon_reason: The button says "Apply Manually," which is the preferred way to begin the application.
 
 If there is no clear application button, return:
 """
@@ -535,6 +536,7 @@ You have an extremely inmportant task in where you are going to look at the imag
 You are filling out this based on the user's information and remember this is just a job application that you need to fill out for the user.
 
 If there is a question that you skipped also let us know why
+You Must Answer all Required Questions!!!
 
 Ex:
 {{
@@ -608,7 +610,7 @@ Cover letter:
 {state["cover_letter_text"]}
 """
 
-    response = question_process_llm.invoke([
+    response = question_process_llm2.invoke([
         {
             "role": "user",
             "content": [
@@ -707,7 +709,7 @@ action: "click"
 reason: This is the submit button for this form and needs to be done to go to the next page.
 }}
 """
-    response = question_process_llm.invoke([
+    response = question_process_llm2.invoke([
         {
             "role": "user",
             "content": [
@@ -776,19 +778,20 @@ def signup_process(state: ApplicationState):
 def load_test_user(state: ApplicationState):
     state["user_id"] = "12345"
 
-    state["first_name"] = "John"
-    state["last_name"] = "Doe"
+    state["first_name"] = "Peyton"
+    state["last_name"] = "Rivers"
     state["preferred_name"] = "John"
 
-    state["email"] = "peytonrivers71@gmail.com"
-    state["password"] = "Passwor123!"
-    state["phone_number"] = "9195551234"
+    state["email"] = "peytonrivers716@gmail.com"
+    state["password"] = "Bprivers1!"
+    state["phone_number"] = "9197026557"
 
-    state["address_line1"] = "123 Main Street"
+    state["zip_code"] = "27596"
+
+    state["address_line1"] = "90 Holstein Ln"
     state["address_line2"] = ""
     state["city"] = "Charlotte"
-    state["user_state"] = "NC"
-    state["zip_code"] = "28223"
+    state["user_state"] = "North Carolina"
     state["country"] = "United States"
 
     state["work_authorized"] = True

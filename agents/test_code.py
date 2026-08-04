@@ -8,9 +8,14 @@ import random
 import json
 import time
 import base64
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision
+import io
+import requests
+from PIL import Image
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, QuestionProcess
 
 from langchain_openai import ChatOpenAI
+from langchain_ollama import ChatOllama
+
 
 import time
 import os
@@ -32,53 +37,53 @@ decide_page_llm = llm.with_structured_output(DecidePage, include_raw=True)
 apply_process_llm = llm.with_structured_output(ApplyProcess)
 signup_process_llm = llm.with_structured_output(SignupProcess)
 forms_action_llm = llm.with_structured_output(FormsAction)
-find_cookies_llm = llm.with_structured_output(FindCookies, include_raw=True)
+question_process_llm = llm.with_structured_output(QuestionProcess, include_raw=True)
 
-url = "https://www.allstate.jobs/job/23310874/software-engineer-product-security/"
 
+
+
+url = "https://www.allstate.jobs/job/23556274/ai-software-engineer/"
+
+input_cost = 0.20 / 1000000
+output_cost = 1.20 / 1000000
+cached_cost = 0.02 / 1000000
+    
 
 def screenshot_page(page):
     screenshot_bytes = page.screenshot(full_page=True)
     screenshot_ascii = base64.b64encode(screenshot_bytes).decode("utf-8")
     return screenshot_ascii
 
-with Stealth().use_sync(sync_playwright()) as p:
-    browser = p.chromium.launch(headless=False)
-    page = browser.new_page()
-    page.goto(url)
-    screenshot_page = screenshot_page(page)
-    body_text = page.locator("body").inner_text() or ""
-    buttons = page.locator("button")
-    button_elements = []
-    for i in range(buttons.count()):
-        button_elements.append({"button": buttons.nth(i), "index": i})
-    links = page.locator("a")
-    link_elements = []
-    for i in range(links.count()):
-        link_elements.append({"link": links.nth(i), "index": i})
+file_path = "/Users/peytonrivers/Desktop/small5.png"
+img = Image.open(file_path)
+buffer = io.BytesIO()
+image = img.save(buffer, format="PNG")
+byt = buffer.getvalue()
+encoded_bytes = base64.b64encode(byt).decode("utf-8")
+data = {"image_input": encoded_bytes, "box_threshold": 0.02, "iou_threshold": 0.05, "use_paddleocr": True, "imgsz": 900}
+data = requests.post("http://127.0.0.1:8000/image_process", json=data)
+data = data.json()
+data_bytes = data["encoded_bytes"]
+boxes_details = data["boxes_details"]
+data_decoded = base64.b64decode(data_bytes.encode("utf-8"))
+buffer_data = io.BytesIO(data_decoded)
+img = Image.open(buffer_data)
+img.show()
+time.sleep(5)
 
-    prompt = """Your an AI Applicant Helper and your job is to determine what type of page this is,
-    here are your options: Apply, Cookies, Signup, Forms, Verification, Error
-    If your options are Apply or Cookies: your job is to give the exact text and nothing else of the element we are going to be clicking
-    Ex: Accept, Apply Now, Save and Continue, Apply Manually, Continue
-    It needs to be the exact text and nothing else!!!
-    """
-    response = find_cookies_llm.invoke([
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": f"You need to find a the button index or link index or neither that will accept the cookies, if the option to click is not link please enter None for link_index, if the option to click is not button please enter None for button_index, if both are wrong please enter none for both link_index and button_index, button: {button_elements}, links: {link_elements}"},
-            ]
-        }
-    ])
-    raw = response["raw"]
-    decision = response["parsed"]
-    print(decision)
-    usage = raw.response_metadata.get("token_usage", {})
-    print("\nDECIDE PAGE TOKEN USAGE")
-    print(f"Prompt tokens: {usage.get('prompt_tokens')}")
-    print(f"Completion tokens: {usage.get('completion_tokens')}")
-    print(f"Total tokens: {usage.get('total_tokens')}")
-    print(response)
-    browser.close()
+prompt = f"""
+Find the icon for to be able to apply for this application:
+boxes details: {boxes_details}
+"""
 
+response = apply_process_llm.invoke([
+    {
+        "role": "user",
+        "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+        ]
+    }
+])
+
+print(response)
