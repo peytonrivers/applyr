@@ -22,7 +22,7 @@ import json
 import time
 import base64
 from datetime import datetime
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -59,7 +59,11 @@ apply_process_llm = llm.with_structured_output(ApplyProcess, include_raw=True)
 signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 question_process_llm2 = llm2.with_structured_output(QuestionProcess, include_raw=True)
-url = "https://www.allstate.jobs/job/23556274/ai-software-engineer/"
+markdown_process_llm2 = llm2.with_structured_output(MarkdownProcess, include_raw=True)
+url = "https://jobs.fidelity.com/en/jobs/2132114/leap-software-engineer/"
+url = "https://www.allstate.jobs/job/23538686/software-engineer-all-levels-/"
+url = "https://cloudfront.careeronestop.org/JusticeImpacted/Toolkit/practice-job-application-form.aspx?practice-job-application-form.aspx="
+# url = "https://demoqa.com/select-menu"
 print(url.title)
 
 input_cost = 0.20 / 1000000
@@ -112,6 +116,20 @@ def coordinates_process(coordinates: list, full_page_width, full_page_height):
     page_y = (middle_y * full_page_height)
     return page_x, page_y
 
+def time_coordinates_process(coordinates: list, full_page_width, full_page_height):
+    x1 = coordinates[0]
+    y1 = coordinates[1]
+    x2 = coordinates[2]
+    y2 = coordinates[3]
+    middle_x = (x1 + x2) / 2
+    left_y = (y1 + y2) / 2
+    left_x = (x1 * full_page_width)
+    page_y = (left_y * full_page_height)
+    page_x = (middle_x * full_page_width)
+    print(f"Time coordinates, x: {left_x}, y: {page_y}")
+    print(f"Regular coordinates, x: {page_x}, y: {page_y}")
+    return left_x, page_y
+
 def page_loaded(state: ApplicationState):
     page = state["current_page"]["page"]
     for i in range(7):
@@ -149,12 +167,12 @@ def decide_page(state: ApplicationState):
     prompt = """Your an AI Application Helper and your job is to decide what page this is
     1. cookies - You always choose this page if there are cookies on the page
     2. apply - You choose this page if we need to click apply now, apply manually, or we only need to click one buttton to continue
-    3. signup - You choose this page if we need to signup or login or create an account for the user.
-    4. forms - You choose this page if there is forms that need to be filled
-    5. verification - You choose this page if there is a verification code that needs to be filled out, or if you need to verify an email, anything to do with verifying an account.
-    6. error - You choose this page if there is an error or the page doesn't exist.
+    3. forms - You choose this page if there is forms that need to be filled
+    4. verification - You choose this page if there is a verification code that needs to be filled out, or if you need to verify an email, anything to do with verifying an account.
+    5. exit - You choose this page if there the url isn't active or we have finished the job application.
+    6. wait - if the page hasn't loaded you choose this process.
 
-    If cookies are present always choose the cookies option
+    If cookies are present always choose the cookies option.
     """
     response = decide_page_llm.invoke([
         {
@@ -202,6 +220,10 @@ def decide_routing(state: ApplicationState):
     else:
         # Fallback for "error" or any unexpected value
         return "end" 
+
+def wait_process(state: ApplicationState):
+    time.sleep(20)
+    return state
 
 def cookies_process(state: ApplicationState):
     page = state["current_page"]["page"]
@@ -287,7 +309,7 @@ icon_reason: Icon 37 says "Accept All Cookies" and is located inside the cookie 
     details = ai_response["raw"]
     new_tokens = details.usage_metadata
     decision = ai_response["parsed"]
-    print(f"Ollama Decision: {decision}")
+    print(f"AI Decision: {decision}")
     icon = decision["icon"]
     icon_reason = decision["icon_reason"]
     cookies_action(icon, boxes_details, state)
@@ -512,7 +534,7 @@ Ex:
 ]
 
 """
-    response = question_process_llm.invoke([{
+    response = question_process_llm2.invoke([{
         "role": "user",
         "content": [
             {"type": "text", "text": prompt},
@@ -528,49 +550,149 @@ Ex:
     print(f"Find question process questions: {ai_questions}")
     return ai_questions, encoded_bytes, boxes_details, state
 
-def answer_question_process(state: ApplicationState):
+# The marking to where to put the old signup process
+
+# The marking to where the new signup process
+def answser_question_process(state: ApplicationState):
     encoded_bytes, boxes_details = omniparser_process(state=state)
     prompt = f"""
-Your an AI Signup Helper that is apart of an assembly line to help answer fill out the user's information on the page.
-You have an extremely inmportant task in where you are going to look at the image input and  will be answering and how the questions.
-You are filling out this based on the user's information and remember this is just a job application that you need to fill out for the user.
+You're an AI Applicant Helper who is currently in the forms process.
 
-If there is a question that you skipped also let us know why
-You Must Answer all Required Questions!!!
+You're job is to look at the current forms page and to have these responsibilities.
+1. Answer Every Required Question
+2. Look at any error's on the page and do your best to handle them
+3. Answer every question by using two things: the user's profile and common sense
+4. Make sure to use common sense while filling out this form
 
-Ex:
+You will answer every question with 1 of these 10 actions.
+
+Immediate Action Section
+
+1. skip - when you want to skip a question
+
+2. fill - when you want to fill out a question
+
+3. fill_with_time - used when you want to fill out an element that requires a time value
+
+4. delete - used when you want to delete the given text
+
+5. delete_and_fill - used when you want to delete the given text and then fill it out with new information
+
+6. click - when you want to click or unclick an element
+
+
+Process Action Section
+
+7. upload_resume - Used when the current question requires the user's resume file to be uploaded.
+
+8. upload_cover_letter - Used when the current question requires the user's cover letter file to be uploaded.
+
+9. click_and_view - Used when clicking an element will reveal or load additional information, questions, fields, or a new section that must be analyzed before continuing.
+
+10. markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
+
+11. submit - Used for buttons that finalize the current page or section, such as Submit, Save and Continue, Continue, Next, or similar progression buttons.
+
+
+Look at the boxes details and the image to help you determine which icon we are looking at.
+
+boxes_details: {boxes_details}
+
+Within the icon's you pick, pick the icon that chooses the option and not the question if possible.
+
+Ex 1:
 {{
-icon: 28,
-action: "click"
-reason: The Question is action me to confirm we approve of what's going on
-}},
-{{
-icon: 17,
-action: "fill",
-action_text: "peytonrivers71@gmail.com"
-reason: It asked to enter the user's email
-}},
-{{
-icon: 30,
-action: "skip"
-reason: It was not relevant in filling out the user's application
+    action: skip,
+    reason: This question has already been filled out correctly and does not require any action.
 }}
 
-USER PROFILE
+Ex 2:
+{{
+    action: fill,
+    action_text: johndoe@gmail.com,
+    icon: 28,
+    reason: This question asks for the user's email address, so the email input should be filled.
+}}
 
+Ex 3:
+{{
+    action: fill_with_time,
+    action_text: 08/01/2020,
+    icon: 35,
+    reason: This question asks for a time, so the time input should be filled with the user's answer.
+}}
+
+Ex 4:
+{{
+    action: delete,
+    icon: 38,
+    reason: This input contains incorrect information and should be cleared.
+}}
+
+Ex 5:
+{{
+    action: delete_and_fill,
+    action_text: John,
+    icon: 42,
+    reason: The current first name is incorrect, so the existing value should be deleted and replaced with John.
+}}
+
+Ex 6:
+{{
+    action: click,
+    icon: 32,
+    reason: This question asks whether the user is a U.S. citizen and Yes is the correct option, so this element should be clicked.
+}}
+
+Ex 7:
+{{
+    action: upload_resume,
+    icon: 50,
+    reason: This question requires the user's resume to be uploaded.
+}}
+
+Ex 8:
+{{
+    action: upload_cover_letter,
+    icon: 52,
+    reason: This question requires the user's cover letter to be uploaded.
+}}
+
+Ex 9:
+{{
+    action: click_and_view,
+    icon: 22,
+    question: Add More Work Experience,
+    reason: The user has additional work experience that needs to be entered. Clicking this element will reveal additional fields that must be analyzed before continuing.
+}}
+
+Ex 10:
+{{
+    action: markdown,
+    icon: 60,
+    question: What U.S. State are you in?,
+    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information.
+}}
+
+Ex 11:
+{{
+    action: submit,
+    icon: 30,
+    reason: This is the Submit, Save and Continue, Continue, or Next button that progresses from the current page or section.
+}}
+
+USER PROFILE:
 
 Account information:
 - User ID: {state["user_id"]}
 - Email: {state["email"]}
 - Password: {state["password"]}
 
-
 Personal information:
 - First name: {state["first_name"]}
 - Last name: {state["last_name"]}
 - Preferred name: {state["preferred_name"]}
 - Phone number: {state["phone_number"]}
-
 
 Address:
 - Address line 1: {state["address_line1"]}
@@ -579,17 +701,15 @@ Address:
 - State: {state["user_state"]}
 - ZIP code: {state["zip_code"]}
 - Country: {state["country"]}
-
+- date: {state["date"]}
 
 Employment eligibility:
 - Authorized to work in the United States: {state["work_authorized"]}
 - Requires current or future employment sponsorship: {state["requires_sponsorship"]}
 
-
 Voluntary self-identification:
 - Veteran: {state["veteran"]}
 - Disability: {state["disability"]}
-
 
 Professional links:
 - LinkedIn: {state["linkedin_url"]}
@@ -597,17 +717,180 @@ Professional links:
 - Portfolio: {state["portfolio_url"]}
 
 
-Uploaded files:
-- Resume file: {state["resume_upload"]}
-- Cover-letter file: {state["cover_letter_upload"]}
+Resume: {state["resume_text"]}
+Cover letter: {state["cover_letter_text"]}
+"""
+
+    new_prompt = f"""
+You're an AI Applicant Helper who is currently in the forms process.
+
+You're job is to look at the current forms page and to have these responsibilities.
+1. Answer Every Required Question
+2. Look at any error's on the page and do your best to handle them
+3. Answer every question by using two things: the user's profile and common sense
+4. Make sure to use common sense while filling out this form
+
+You will answer every question with 1 of these 10 actions.
+
+Immediate Action Section
+
+1. skip - when you want to skip a question
+
+2. fill - when you want to fill out a question
+
+3. fill_with_time - used when you want to fill out an element that requires a time or date value.
+
+4. delete - used when you want to delete the given text
+
+5. delete_and_fill - used when you want to delete the given text and then fill it out with new information
+
+6. click - when you want to click or unclick an element
 
 
-Resume:
-{state["resume_text"]}
+Process Action Section
+
+7. upload_resume - Used when the current question requires the user's resume file to be uploaded.
+
+8. upload_cover_letter - Used when the current question requires the user's cover letter file to be uploaded.
+
+9. click_and_view - Used when clicking an element will reveal or load additional information, questions, fields, or a new section that must be analyzed before continuing.
+
+10. markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
+
+11. submit - Used for buttons that finalize the current page or section, such as Submit, Save and Continue, Continue, Next, or similar progression buttons.
 
 
-Cover letter:
-{state["cover_letter_text"]}
+Look at the boxes details and the image to help you determine which icon we are looking at.
+
+boxes_details: {boxes_details}
+
+Within the icon's you pick, pick the icon that chooses the option and not the question if possible.
+
+Markdown answers must have a custom 'background_point' that will be used to click the background of page. This background point should be in list format, this list format should include the percent of the page. [0.5, 0.5] would represent 50% of the x-axis and 50% of the yaxis. [0.39, 0.48] 0.39 would represent 39% of the x-axis and 0.48 would represent 48% of the y-axis.
+
+You must follow the markdown Example format!!!
+
+Ex 1:
+{{
+    action: skip,
+    reason: This question has already been filled out correctly and does not require any action.
+}}
+
+Ex 2:
+{{
+    action: fill,
+    action_text: johndoe@gmail.com,
+    icon: 28,
+    reason: This question asks for the user's email address, so the email input should be filled.
+}}
+
+Ex 3:
+{{
+    action: fill_with_time,
+    action_text: 08/01/2020,
+    icon: 35,
+    reason: This question asks for a time, so the time input should be filled with the user's answer.
+}}
+
+Ex 4:
+{{
+    action: delete,
+    icon: 38,
+    reason: This input contains incorrect information and should be cleared.
+}}
+
+Ex 5:
+{{
+    action: delete_and_fill,
+    action_text: John,
+    icon: 42,
+    reason: The current first name is incorrect, so the existing value should be deleted and replaced with John.
+}}
+
+Ex 6:
+{{
+    action: click,
+    icon: 32,
+    reason: This question asks whether the user is a U.S. citizen and Yes is the correct option, so this element should be clicked.
+}}
+
+Ex 7:
+{{
+    action: upload_resume,
+    icon: 50,
+    reason: This question requires the user's resume to be uploaded.
+}}
+
+Ex 8:
+{{
+    action: upload_cover_letter,
+    icon: 52,
+    reason: This question requires the user's cover letter to be uploaded.
+}}
+
+Ex 9:
+{{
+    action: click_and_view,
+    icon: 22,
+    question: Add More Work Experience,
+    reason: The user has additional work experience that needs to be entered. Clicking this element will reveal additional fields that must be analyzed before continuing.
+}}
+
+Ex 10:
+{{
+    action: markdown,
+    icon: 60,
+    current_question: What U.S. State are you in?,
+    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information.
+    background_point: [0.38, 0.92]
+    bacground_reason: This point is completely the background with no text or clickable item.
+}}
+
+Ex 11:
+{{
+    action: submit,
+    icon: 30,
+    reason: This is the Submit, Save and Continue, Continue, or Next button that progresses from the current page or section.
+}}
+
+USER PROFILE:
+
+Account information:
+- User ID: {state["user_id"]}
+- Email: {state["email"]}
+- Password: {state["password"]}
+
+Personal information:
+- First name: {state["first_name"]}
+- Last name: {state["last_name"]}
+- Preferred name: {state["preferred_name"]}
+- Phone number: {state["phone_number"]}
+
+Address:
+- Address line 1: {state["address_line1"]}
+- Address line 2: {state["address_line2"]}
+- City: {state["city"]}
+- State: {state["user_state"]}
+- ZIP code: {state["zip_code"]}
+- Country: {state["country"]}
+- date: {state["date"]}
+
+Employment eligibility:
+- Authorized to work in the United States: {state["work_authorized"]}
+- Requires current or future employment sponsorship: {state["requires_sponsorship"]}
+
+Voluntary self-identification:
+- Veteran: {state["veteran"]}
+- Disability: {state["disability"]}
+
+Professional links:
+- LinkedIn: {state["linkedin_url"]}
+- GitHub: {state["github_url"]}
+- Portfolio: {state["portfolio_url"]}
+
+
+Resume: {state["resume_text"]}
+Cover letter: {state["cover_letter_text"]}
 """
 
     response = question_process_llm2.invoke([
@@ -619,103 +902,172 @@ Cover letter:
             ]
         }
     ])
-
-    old_bytes = encoded_bytes
     details = response["raw"]
     new_tokens = details.usage_metadata
     state = ai_token_tracker(new_tokens=new_tokens, state=state)
-    decision = response["parsed"]
-    ai_answers = decision["items"]
+    answers = response["parsed"]
+    ai_answers = answers["items"]
     print(f"AI Answers: {ai_answers}")
-    return old_bytes, ai_answers, boxes_details, state
+    state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state)
+    return state
 
-def execute_question_process(old_bytes: str, ai_answers: list[dict], boxes_details: list[dict], state: ApplicationState):
+def action_process(ai_answers: list[dict], boxes_details: list[dict], state: ApplicationState):
+    ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "fill_with_time": 2, "delete": 3, "delete_and_fill": 4, "click": 5, "upload_resume": 6, "upload_cover_letter": 7, "markdown": 8, "click_and_view": 9, "submit": 10}.get(x["action"].lower(), 999))
+    for i in range(len(ai_answers)):
+        current_answer = ai_answers[i]
+        action = current_answer.get("action")
+        if not action or action == "skip":
+            continue
+        icon = current_answer.get("icon")
+        if not icon:
+            continue
+        current_box = boxes_details[icon]
+        execute_action(current_answer=current_answer, current_box=current_box, state=state)
+    return state
+
+def execute_action(current_answer: dict, current_box: dict, state: ApplicationState):
     page = state["current_page"]["page"]
     full_page_width = 1280
     full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
-    for i in range(len(ai_answers)):
-        current_answer = ai_answers[i]
-        action = current_answer["action"]
-        if action == "skip":
-            continue
-        icon = current_answer["icon"]
-        current_box = boxes_details[icon]
-        coordinates = current_box["bbox"]
-        page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
-        if action == "click":
-            page.mouse.click(page_x, page_y)
-        if action == "fill":
-            action_text = current_answer["action_text"]
-            page.mouse.click(page_x, page_y)
-            page.keyboard.type(action_text)
+    action = current_answer.get("action")
+    if not action or action == "skip":
+        return state
+    icon = current_answer.get("icon")
+    if not icon:
+        return state
+    coordinates = current_box.get("bbox")
+    if not coordinates:
+        return state
+    page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+    if action == "fill":
+        action_text = current_answer.get("action_text")
+        if not action_text:
+            return state
+        page.mouse.click(page_x, page_y)
+        time.sleep(2)
+        page.keyboard.type(action_text)
+    if action == "fill_with_time":
+        action_text = current_answer.get("action_text")
+        if not action_text:
+            return state
+        page.mouse.click(page_x, page_y)
+        page.keyboard.press("ArrowLeft")
+        time.sleep(1)
+        page.keyboard.press("ArrowLeft")
+        time.sleep(1)
+        page.keyboard.type(action_text)
+    if action == "click":
+        page.mouse.click(page_x, page_y)
+        time.sleep(2)
+    if action == "markdown":
+        page.mouse.click(page_x, page_y)
+        body_text = page.locator("body").inner_text()
+        page.keyboard.press("ArrowDown")
+        markdown_process(current_answer=current_answer, page_x=page_x, page_y=page_y, body_text=body_text, state=state)
+    if action == "submit":
+        encoded_bytes = screenshot_process(state=state)
+        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        buffer = io.BytesIO(decoded_bytes)
+        image = Image.open(buffer)
+        image.show()
+        time.sleep(10)
+        page.mouse.click(page_x, page_y)
+
+def markdown_process(current_answer: dict, page_x: float, page_y: float, body_text: str, state: ApplicationState):
+    page = state["current_page"]["page"]
+    full_page_width = 1280
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     encoded_bytes = screenshot_process(state=state)
-    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    img = Image.open(buffer)
-    img.show()
-    time.sleep(20)
-    return old_bytes, ai_answers, state
-
-def review_question_process(old_bytes: str, ai_answers: list[dict], state: ApplicationState):
-    encoded_bytes, boxes_details = omniparser_process(state=state)
+    current_question = current_answer.get("current_question")
+    background_point = current_answer.get("background_point")
+    background_x = full_page_width * background_point[0]
+    background_y = full_page_height * background_point[1]
     prompt = f"""
-Your An AI Applicant Reviewer.
-Your Job is to look at the answered questions and the new image and to determine if this is a new page or that we are in the same page and need to take the next action.
-Guidelines:
-- You will be returning two different types of output.
-- Your first input will always show the page status whether it is 'complete' or 'incomplete' and this will be determined by looking at the two image inputs to see if they are the same page or a new page.
-- The reason needs to be in the 2-3 sentence range and tell us what actions you are going to do and why the page is complete or incomplete
-- If an answered question is correct you do not need tell us to revise that question.
-- Action options: ["click", "delete", "delete and fill", "fill"]
+You're an AI Applicant Helper that is in the markup process.
 
-The First image is the Old one,
-The Second image is the new one which will be used if this page is incompletes.
+Markup definition: markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
 
-You will be also showing what questions need to be edited or answers as well if we need to click the submit/continue button, always have the submit/continue button as the last element. 
-Use the pattern of AI Answers as help.
+You're goal is to look at the the body text + the image to find all the options for the question we are in.
 
-AI Answers: {ai_answers}
+current_question: {current_question}
+body_text: {body_text}
 
-Ex 1:
+You will showcase all the options with the text and the option number in order.
+You will showcase the option choice you hope to click.
+You will also showcase the current option that our keyboard is at, so we know how many times we need to use the keyboard to go up or down to click the option_choice.
+Use the user info and common sense to help answer the markup.
+
+USER PROFILE:
+
+Account information:
+- User ID: {state["user_id"]}
+- Email: {state["email"]}
+- Password: {state["password"]}
+
+Personal information:
+- First name: {state["first_name"]}
+- Last name: {state["last_name"]}
+- Preferred name: {state["preferred_name"]}
+- Phone number: {state["phone_number"]}
+
+Address:
+- Address line 1: {state["address_line1"]}
+- Address line 2: {state["address_line2"]}
+- City: {state["city"]}
+- State: {state["user_state"]}
+- ZIP code: {state["zip_code"]}
+- Country: {state["country"]}
+- date: {state["date"]}
+
+Employment eligibility:
+- Authorized to work in the United States: {state["work_authorized"]}
+- Requires current or future employment sponsorship: {state["requires_sponsorship"]}
+
+Voluntary self-identification:
+- Veteran: {state["veteran"]}
+- Disability: {state["disability"]}
+
+Professional links:
+- LinkedIn: {state["linkedin_url"]}
+- GitHub: {state["github_url"]}
+- Portfolio: {state["portfolio_url"]}
+
+
+Resume: {state["resume_text"]}
+Cover letter: {state["cover_letter_text"]}
+---------------
+
+Example output
+options: [
 {{
-page_status: 'complete'
-reason: ...
+text: Alabama,
+option_number: 1
+}},
+{{
+text: Alaska,
+option_number: 2
+}},
+{{
+text: Arkansas,
+option_number: 3
+}},
+{{
+text: California,
+option_number: 4
 }}
+]
 
-Ex 2:
-{{
-page_status: 'incomplete'
-reason: ...
-}},
-{{
-icon: 28,
-action: 'click',
-reason: This box needed to be checked and it wasn't previously,
-}},
-{{
-icon: 30,
-action: 'delete and fill',
-action_text: peytonrivers71@gmail.com,
-reason: The email was typed wrong and I'm typing it in correctly,
-}},
-{{
-icon: 44,
-action: "click",
-reason: This boxed was checked and didn't need to be checked,
-}},
-{{
-icon: 50,
-action: "click"
-reason: This is the submit button for this form and needs to be done to go to the next page.
-}}
+option_choice: 3
+
+current_option: 1
+------------------
 """
-    response = question_process_llm2.invoke([
+    response = markdown_process_llm2.invoke([
         {
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{old_bytes}"}},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
             ]
         }
     ])
@@ -723,57 +1075,44 @@ reason: This is the submit button for this form and needs to be done to go to th
     new_tokens = details.usage_metadata
     state = ai_token_tracker(new_tokens=new_tokens, state=state)
     decision = response["parsed"]
-    ai_review = decision["items"]
-    print(f"AI review decision: {ai_review}")
-    return ai_review, boxes_details, state
+    print(f"Markdown decision: {decision}")
+    options = decision["options"]
+    option_choice = decision["option_choice"]
+    current_option = decision["current_option"]
+    arrow_count = option_choice - current_option
+    page.mouse.click(background_x, background_y)
+    page.mouse.click(page_x, page_y)
+    page.keyboard.press("ArrowDown")
+    print(f"How many times we need to move the arrow: {arrow_count}")
+    if arrow_count == 0:
+        page.keyboard.press("Enter")
+    if arrow_count < 0:
+        for i in range(abs(arrow_count)):
+            page.keyboard.press("ArrowUp")
+        page.keyboard.press("Enter")
+    if arrow_count > 0:
+        for i in range(arrow_count):
+            page.keyboard.press("ArrowDown")
+            print(f"Arrow down: {i+1}")
+            time.sleep(1)
+        page.keyboard.press("Enter")
+    encoded_bytes = screenshot_process(state=state)
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    image.show()
+    time.sleep(10)
+    time.sleep(5)
 
-def review_and_execute(ai_review: list[dict], boxes_details: list[dict], state: ApplicationState):
-    page = state["current_page"]["page"]
-    full_page_width = 1280
-    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
-    first_box = ai_review[0]
-    page_status = first_box["page_status"]
-    if page_status == "complete":
-        return state
-    for i in range(1, len(ai_review)):
-        current_review = ai_review[i]
-        icon = current_review.get("icon")
-        current_box = boxes_details[icon]
-        coordinates = current_box["bbox"]
-        page_x, page_y = coordinates_process(coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
-        action = current_review.get("action")
-        action_text = current_review.get("action_text")
-        action_process(action=action, page_x=page_x, page_y=page_y, state=state, action_text=action_text)
-    screenshot = page.screenshot()
-    buffer = io.BytesIO(screenshot)
-    img = Image.open(buffer)
-    img.show()
-    time.sleep(20)
-    return state
-
-def action_process(action, page_x, page_y, state: ApplicationState, action_text=None):
-    page = state["current_page"]["page"]
-    if action == "click":
-        page.mouse.click(page_x, page_y)
-    if action == "fill":
-        page.mouse.click(page_x, page_y)
-        page.keyboard.type(action_text)
-    if action == "delete and fill":
-        page.mouse.click(page_x, page_y)
-        page.keyboard.press("ControlOrMeta+A")
-        page.keyboard.press("Backspace")
-        page.keyboard.type(action_text)
-    if action == "delete":
-        page.mouse.click(page_x, page_y)
-        page.keyboard.press("ControlOrMeta+A")
-        page.keyboard.press("Backspage")
-    
 def signup_process(state: ApplicationState):
+    state = answser_question_process(state=state)
+    
+"""def signup_process(state: ApplicationState):
     old_bytes, ai_answers, boxes_details, state = answer_question_process(state=state)
     old_bytes, ai_answers, state = execute_question_process(old_bytes=old_bytes, ai_answers=ai_answers, boxes_details=boxes_details, state=state)
     ai_review, boxes_details, state = review_question_process(old_bytes=old_bytes, ai_answers=ai_answers, state=state)
     state = review_and_execute(ai_review=ai_review, boxes_details=boxes_details, state=state)
-    return state
+    return state"""
 
 def load_test_user(state: ApplicationState):
     state["user_id"] = "12345"
@@ -802,6 +1141,7 @@ def load_test_user(state: ApplicationState):
     state["linkedin_url"] = "https://linkedin.com/in/johndoe"
     state["github_url"] = "https://github.com/johndoe"
     state["portfolio_url"] = "https://johndoe.dev"
+    state["date"] = "August 8th 2025"
 
     state["resume_text"] = """
 John Doe
@@ -865,14 +1205,16 @@ graph.add_node("cookies_process", cookies_process)
 graph.add_node("decide_routing", decide_routing)
 graph.add_node("apply_process", apply_process)
 graph.add_node("signup_process", signup_process)
+graph.add_node("wait_process", wait_process)
 graph.add_node("load_test_user", load_test_user)
 
 graph.add_edge(START, "load_test_user")
 graph.add_edge("load_test_user", "decide_page")
-graph.add_conditional_edges("decide_page", decide_routing, {"cookies": "cookies_process", "apply": "apply_process", "signup": "signup_process", "forms": "signup_process","end": END})
+graph.add_conditional_edges("decide_page", decide_routing, {"cookies": "cookies_process", "apply": "apply_process", "signup": "signup_process", "forms": "signup_process", "wait": "wait_process", "exit": END})
 graph.add_edge("cookies_process", "decide_page")
 graph.add_edge("apply_process", "decide_page")
 graph.add_edge("signup_process", "decide_page")
+graph.add_edge("wait_process", "decide_page")
 
 mapping = graph.compile()
 

@@ -72,7 +72,7 @@ class ApplyProcess(TypedDict):
     icon_reason: str | None
 
 class DecidePage(TypedDict):
-    action: Literal["apply", "signup", "forms", "cookies", "verification", "error"]
+    action: Literal["apply", "signup", "forms", "cookies", "verification", "exit", "wait"]
     action_reason: str
 
 class MultipleQuestionItem(TypedDict):
@@ -160,6 +160,11 @@ class PageDecision(TypedDict):
     follow_through_element: int | None
     reason: str
 
+class MarkdownProcess(TypedDict):
+    options: list[dict]
+    option_choice: int
+    current_option: int
+
 class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────
     user_id: str
@@ -209,6 +214,9 @@ class ApplicationState(TypedDict):
     # ── Routing ────────────────────────────────────
     current_page: CurrentPage
     retry_count: int
+
+    # ── Date ────────────────────────────────────
+    date: str
 
     element_action: FormsAction
     previous_action: Literal["apply", "signup", "forms", "cookies", "verification", "other", "error"] | None
