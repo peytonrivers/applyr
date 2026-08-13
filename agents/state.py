@@ -165,6 +165,10 @@ class MarkdownProcess(TypedDict):
     option_choice: int
     current_option: int
 
+class ReviewMarkdownProcess(TypedDict):
+    markdown_status: Literal["correct", "incorrect_and_box_open", "incorrect_and_box_closed", "more_markdown", "more_questions"]
+    reason: str
+
 class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────
     user_id: str

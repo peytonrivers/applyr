@@ -22,12 +22,13 @@ import json
 import time
 import base64
 from datetime import datetime
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import requests
 
+import pyautogui
 from langchain_ollama import ChatOllama
 
 from langchain_openai import ChatOpenAI
@@ -60,10 +61,10 @@ signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 question_process_llm2 = llm2.with_structured_output(QuestionProcess, include_raw=True)
 markdown_process_llm2 = llm2.with_structured_output(MarkdownProcess, include_raw=True)
+review_markdown_process_llm2 = llm2.with_structured_output(ReviewMarkdownProcess, include_raw=True)
 url = "https://jobs.fidelity.com/en/jobs/2132114/leap-software-engineer/"
-url = "https://www.allstate.jobs/job/23538686/software-engineer-all-levels-/"
-url = "https://cloudfront.careeronestop.org/JusticeImpacted/Toolkit/practice-job-application-form.aspx?practice-job-application-form.aspx="
-# url = "https://demoqa.com/select-menu"
+url = "https://www.allstate.jobs/job/23527822/senior-product-engineer-software-java-/"
+url = "https://www.allstate.jobs/job/23283268/-net-senior-software-engineer/"
 print(url.title)
 
 input_cost = 0.20 / 1000000
@@ -170,7 +171,7 @@ def decide_page(state: ApplicationState):
     3. forms - You choose this page if there is forms that need to be filled
     4. verification - You choose this page if there is a verification code that needs to be filled out, or if you need to verify an email, anything to do with verifying an account.
     5. exit - You choose this page if there the url isn't active or we have finished the job application.
-    6. wait - if the page hasn't loaded you choose this process.
+    6. wait - if the page hasn't loaded you choose this process, usually you can tell based off there being nothing on the screen but not if there's an error present.
 
     If cookies are present always choose the cookies option.
     """
@@ -217,9 +218,11 @@ def decide_routing(state: ApplicationState):
         return "application"
     elif action == "verification":
         return "verification"
+    elif action == "wait":
+        return "wait"
     else:
         # Fallback for "error" or any unexpected value
-        return "end" 
+        return "exit" 
 
 def wait_process(state: ApplicationState):
     time.sleep(20)
@@ -297,6 +300,10 @@ Example:
 
 icon: 37
 icon_reason: Icon 37 says "Accept All Cookies" and is located inside the cookie consent popup.
+
+Example if no cookies are present:
+icon: None
+icon_reason: there are no cookies present on this screen
 """
 
     ai_response = cookies_process_llm.invoke([
@@ -310,8 +317,10 @@ icon_reason: Icon 37 says "Accept All Cookies" and is located inside the cookie 
     new_tokens = details.usage_metadata
     decision = ai_response["parsed"]
     print(f"AI Decision: {decision}")
-    icon = decision["icon"]
-    icon_reason = decision["icon_reason"]
+    icon = decision.get("icon")
+    if not icon:
+        return state
+    icon_reason = decision.get("icon_reason")
     cookies_action(icon, boxes_details, state)
     print(f"icon: {icon}")
     print(f"icon reason: {icon_reason}")
@@ -421,7 +430,10 @@ Example:
 icon: 17
 icon_reason: The button says "Apply Manually," which is the preferred way to begin the application.
 
-If there is no clear application button, return:
+Example for no application button found:
+
+icon: None
+icon_reason: There is no apply button found on the screen.
 """
     response = apply_process_llm.invoke([
         {
@@ -435,12 +447,13 @@ If there is no clear application button, return:
     decision = response["parsed"]
     new_tokens = details.usage_metadata
     state = ai_token_tracker(new_tokens=new_tokens, state=state)
-    icon = decision["icon"]
+    icon = decision.get("icon")
+    if not icon:
+        return state
     print(icon)
     icon_reason = decision["icon_reason"]
     print(icon_reason)
     state = apply_action(icon=icon, boxes_details=boxes_details, state=state)
-    print(f"Apply process checkpoint 4")
     return state
     
 def apply_action(icon: int, boxes_details: json, state: ApplicationState):
@@ -479,76 +492,6 @@ def apply_action(icon: int, boxes_details: json, state: ApplicationState):
         page.wait_for_load_state("domcontentloaded")
         time.sleep(5)
     return state
-
-def find_question_process(state: ApplicationState):
-    page = state["current_page"]["page"]
-    encoded_bytes, boxes_details = omniparser_process(state)
-    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    img = Image.open(buffer)
-    img.show()
-    time.sleep(10)
-    prompt = f"""
-Your an AI Applicant Helper that is apart of an assembly line to help answer fill out the user's information on the page.
-You have an extremely inmportant task in looking at the page and the boxes details in order to find all the questions and it's options as well as with the information describing it.
-There is no set format in how the responses need to be except that it will be a list of dictionaries and that each dictionary must contain an icon whether it's from the boxes details or custom.
-Make Sure to take your time with the output!!!
-
-Assembly line
-1. Find Questions
-2. Answer Questions
-3. Execute
-4. Review
-
-boxes details: {boxes_details}
-
-Inside the output you will give details of the objective that you have as well as details that go into every single question and their output.
-
-Ex:
-[
-{{
-"question": "What is your email"
-"type": "text",,
-"option": "",
-"text_icon": 4
-"input_icon": 28
-}},
-{{
-"question": "Will you verify your that you consent to this form and all it's questions",
-"type": "checkbox"
-"options": [{{input_icon: 4, type: checkbox, text: yes}}, {{input_icon: 5, type: checkbox, text: no}}]
-}},
-{{
-"question": "Will you verify your that you consent to this form and all it's questions",
-"type": "checkbox"
-"options": [{{input_icon: 4, type: checkbox, text: yes}}, {{icon: custom, type: checkbox, text: no, coordinates: [0.2325, 0.385, 0.485, .0585]}}]
-}},
-{{
-"question": None,
-"text": Save and Continue
-"type": button,
-"info": this is the submit buttom
-"input_icon": 28
-"text_icon": None
-}}
-]
-
-"""
-    response = question_process_llm2.invoke([{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
-
-        ]
-    }])
-    details = response["raw"]
-    new_tokens = details.usage_metadata
-    state = ai_token_tracker(new_tokens, state)
-    decision = response["parsed"]
-    ai_questions = decision["items"]
-    print(f"Find question process questions: {ai_questions}")
-    return ai_questions, encoded_bytes, boxes_details, state
 
 # The marking to where to put the old signup process
 
@@ -721,7 +664,7 @@ Resume: {state["resume_text"]}
 Cover letter: {state["cover_letter_text"]}
 """
 
-    new_prompt = f"""
+    prompt = f"""
 You're an AI Applicant Helper who is currently in the forms process.
 
 You're job is to look at the current forms page and to have these responsibilities.
@@ -729,6 +672,7 @@ You're job is to look at the current forms page and to have these responsibiliti
 2. Look at any error's on the page and do your best to handle them
 3. Answer every question by using two things: the user's profile and common sense
 4. Make sure to use common sense while filling out this form
+5. Use common sense, if we have already answered the required questions and the answers are correct, we can just continue to the next.
 
 You will answer every question with 1 of these 10 actions.
 
@@ -766,10 +710,6 @@ boxes_details: {boxes_details}
 
 Within the icon's you pick, pick the icon that chooses the option and not the question if possible.
 
-Markdown answers must have a custom 'background_point' that will be used to click the background of page. This background point should be in list format, this list format should include the percent of the page. [0.5, 0.5] would represent 50% of the x-axis and 50% of the yaxis. [0.39, 0.48] 0.39 would represent 39% of the x-axis and 0.48 would represent 48% of the y-axis.
-
-You must follow the markdown Example format!!!
-
 Ex 1:
 {{
     action: skip,
@@ -779,9 +719,9 @@ Ex 1:
 Ex 2:
 {{
     action: fill,
-    action_text: johndoe@gmail.com,
+    action_text: {state["email"]}
     icon: 28,
-    reason: This question asks for the user's email address, so the email input should be filled.
+    reason: This question asks for the user's email address, so the email input should be filled with {state["email"]} from the User Profile Section.
 }}
 
 Ex 3:
@@ -796,36 +736,36 @@ Ex 4:
 {{
     action: delete,
     icon: 38,
-    reason: This input contains incorrect information and should be cleared.
+    reason: This input contains incorrect information and should be cleared with the correct answer in the User Profile Section.
 }}
 
 Ex 5:
 {{
     action: delete_and_fill,
-    action_text: John,
+    action_text: {state["first_name"]},
     icon: 42,
-    reason: The current first name is incorrect, so the existing value should be deleted and replaced with John.
+    reason: The current first name is incorrect, so the existing value should be deleted and replaced with {state["first_name"]} due to me checking the User Profile Section.
 }}
 
 Ex 6:
 {{
     action: click,
     icon: 32,
-    reason: This question asks whether the user is a U.S. citizen and Yes is the correct option, so this element should be clicked.
+    reason: This question asks whether the user is a U.S. citizen and Yes due to the User Profile Section.
 }}
 
 Ex 7:
 {{
     action: upload_resume,
     icon: 50,
-    reason: This question requires the user's resume to be uploaded.
+    reason: This question requires the user's resume to be uploaded and there is a resume to be uploaded in the User Profile Section.
 }}
 
 Ex 8:
 {{
     action: upload_cover_letter,
     icon: 52,
-    reason: This question requires the user's cover letter to be uploaded.
+    reason: This question requires the user's cover letter to be uploaded and there is a cover letter to be uploaded in the User Profile Section.
 }}
 
 Ex 9:
@@ -833,7 +773,7 @@ Ex 9:
     action: click_and_view,
     icon: 22,
     question: Add More Work Experience,
-    reason: The user has additional work experience that needs to be entered. Clicking this element will reveal additional fields that must be analyzed before continuing.
+    reason: The user has one more work experience that needs to be uploaded due to the User Profile Section showing two work experience.
 }}
 
 Ex 10:
@@ -841,9 +781,7 @@ Ex 10:
     action: markdown,
     icon: 60,
     current_question: What U.S. State are you in?,
-    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information.
-    background_point: [0.38, 0.92]
-    bacground_reason: This point is completely the background with no text or clickable item.
+    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information, I answered this through the User Profile Section.
 }}
 
 Ex 11:
@@ -853,7 +791,7 @@ Ex 11:
     reason: This is the Submit, Save and Continue, Continue, or Next button that progresses from the current page or section.
 }}
 
-USER PROFILE:
+USER PROFILE Section:
 
 Account information:
 - User ID: {state["user_id"]}
@@ -874,6 +812,7 @@ Address:
 - ZIP code: {state["zip_code"]}
 - Country: {state["country"]}
 - date: {state["date"]}
+- how this job was found is always other or another website or something close to other or another website.
 
 Employment eligibility:
 - Authorized to work in the United States: {state["work_authorized"]}
@@ -960,32 +899,53 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         page.mouse.click(page_x, page_y)
         time.sleep(2)
     if action == "markdown":
-        page.mouse.click(page_x, page_y)
-        body_text = page.locator("body").inner_text()
-        page.keyboard.press("ArrowDown")
-        markdown_process(current_answer=current_answer, page_x=page_x, page_y=page_y, body_text=body_text, state=state)
-    if action == "submit":
-        encoded_bytes = screenshot_process(state=state)
-        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-        buffer = io.BytesIO(decoded_bytes)
-        image = Image.open(buffer)
-        image.show()
-        time.sleep(10)
-        page.mouse.click(page_x, page_y)
+        page.evaluate(f"window.scrollTo({page_x}, {page_y})")
 
-def markdown_process(current_answer: dict, page_x: float, page_y: float, body_text: str, state: ApplicationState):
+        time.sleep(1)
+        page.mouse.click(page_x, page_y)
+        time.sleep(1)
+        pyautogui.press("down")
+        time.sleep(1)
+        body_text = page.locator("body").inner_text()
+        state = markdown_process(current_answer=current_answer, body_text=body_text, page_x=page_x, page_y=page_y, state=state)
+
+        time.sleep(5)
+        print(f"Finished arrow process")
+    if action == "submit":
+        try:
+            with page.expect_popup() as new_page:
+                page.mouse.click(page_x, page_y)
+            print(f"old page: {page}")
+            new_page = new_page.value
+            print(f"new page: {new_page}")
+            new_page.wait_for_load_state("domcontentloaded")
+            url = new_page.url
+            print(f"old current page: {state["current_page"]}")
+            state["current_page"] = {
+                "page": new_page,
+                "url": url
+            }
+            print(f"new current page: {state["current_page"]}")
+            time.sleep(5)
+        except Exception:
+            page.wait_for_load_state("domcontentloaded")
+            time.sleep(5)
+
+
+def markdown_process(current_answer: dict, body_text: str, page_x: float, page_y: float, state: ApplicationState):
     page = state["current_page"]["page"]
-    full_page_width = 1280
-    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
-    encoded_bytes = screenshot_process(state=state)
-    current_question = current_answer.get("current_question")
-    background_point = current_answer.get("background_point")
-    background_x = full_page_width * background_point[0]
-    background_y = full_page_height * background_point[1]
-    prompt = f"""
+
+    for attempt in range(5):
+        full_page_width = 1280
+        full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+        screenshot = page.screenshot()
+        encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
+        current_question = current_answer.get("current_question")
+
+        prompt = f"""
 You're an AI Applicant Helper that is in the markup process.
 
-Markup definition: markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
+Markdown definition: markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
 
 You're goal is to look at the the body text + the image to find all the options for the question we are in.
 
@@ -995,7 +955,248 @@ body_text: {body_text}
 You will showcase all the options with the text and the option number in order.
 You will showcase the option choice you hope to click.
 You will also showcase the current option that our keyboard is at, so we know how many times we need to use the keyboard to go up or down to click the option_choice.
-Use the user info and common sense to help answer the markup.
+Use the User Profile Section and common sense to help answer the markdown process.
+
+USER PROFILE:
+
+Account information:
+
+- User ID: {state["user_id"]}
+- Email: {state["email"]}
+- Password: {state["password"]}
+
+Personal information:
+
+- First name: {state["first_name"]}
+- Last name: {state["last_name"]}
+- Preferred name: {state["preferred_name"]}
+- Phone number: {state["phone_number"]}
+
+Address:
+
+- Address line 1: {state["address_line1"]}
+- Address line 2: {state["address_line2"]}
+- City: {state["city"]}
+- State: {state["user_state"]}
+- ZIP code: {state["zip_code"]}
+- Country: {state["country"]}
+- date: {state["date"]}
+
+Employment eligibility:
+
+- Authorized to work in the United States: {state["work_authorized"]}
+- Requires current or future employment sponsorship: {state["requires_sponsorship"]}
+
+Voluntary self-identification:
+
+- Veteran: {state["veteran"]}
+- Disability: {state["disability"]}
+
+Professional links:
+
+- LinkedIn: {state["linkedin_url"]}
+- GitHub: {state["github_url"]}
+- Portfolio: {state["portfolio_url"]}
+- Where we found this job: Always choose other or another website or the choice that best resembles the answer ['other', 'another website' or something that is close.]
+
+Example output 1:
+options: [
+{{
+text: Alabama,
+option_number: 1
+}},
+{{
+text: Alaska,
+option_number: 2
+}},
+{{
+text: Arkansas,
+option_number: 3
+}},
+{{
+text: California,
+option_number: 4
+}}
+]
+
+option_choice: 3
+
+current_option: 1
+
+option_reason: We are at the 1st highlighted option in the photo and we need to go to the third option to be correct
+
+Example 2:
+options: [
+{{
+text: Alabama,
+option_number: 1
+}},
+{{
+text: Alaska,
+option_number: 2
+}},
+{{
+text: Arkansas,
+option_number: 3
+}},
+{{
+text: California,
+option_number: 4
+}}
+]
+
+option_choice: 3
+
+current_option: 0
+
+## option_reason: There is currently no highlighted option in the photo and we need to move to the third option
+"""
+
+        response = markdown_process_llm2.invoke([
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                ]
+            }
+        ])
+
+        details = response["raw"]
+        new_tokens = details.usage_metadata
+
+        state = ai_token_tracker(
+            new_tokens=new_tokens,
+            state=state
+        )
+
+        decision = response["parsed"]
+
+        print(f"Markdown decision: {decision}")
+
+        options = decision["options"]
+        option_choice = decision["option_choice"]
+        current_option = decision["current_option"]
+
+        arrow_count = option_choice - current_option
+
+        print(f"How many times we need to move the arrow: {arrow_count}")
+
+        pyautogui.moveTo(500, 500, duration=0.2)
+
+        if arrow_count == 0:
+            pyautogui.press("up")
+            pyautogui.press("down")
+            pyautogui.press("enter")
+
+        elif arrow_count < 0:
+            for i in range(abs(arrow_count)):
+                pyautogui.press("up")
+
+            pyautogui.press("enter")
+
+        elif arrow_count > 0:
+            for i in range(arrow_count):
+                pyautogui.press("down")
+                print(f"Arrow down: {i+1}")
+                time.sleep(1)
+
+            pyautogui.press("enter")
+
+        encoded_bytes = screenshot_process(state=state)
+        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        buffer = io.BytesIO(decoded_bytes)
+        image = Image.open(buffer)
+        image.show()
+
+        time.sleep(10)
+        time.sleep(5)
+
+        markdown_status, state = review_markdown_process(
+            current_answer=current_answer,
+            body_text=body_text,
+            page_x=page_x,
+            page_y=page_y,
+            state=state
+        )
+
+        if markdown_status == "correct":
+            return state
+
+        elif markdown_status == "more_questions":
+            return state
+
+        elif markdown_status == "incorrect_and_box_closed":
+            page.mouse.click(page_x, page_y)
+            body_text = page.locator("body").inner_text()
+            continue
+
+        elif markdown_status == "incorrect_and_box_open":
+            body_text = page.locator("body").inner_text()
+            continue
+
+        elif markdown_status == "more_markdown":
+            body_text = page.locator("body").inner_text()
+            continue
+
+        else:
+            return state
+
+    return state
+
+def review_markdown_process(current_answer: dict, body_text: str, page_x: float, page_y: float, state: ApplicationState):
+    time.sleep(2)
+    page = state["current_page"]["page"]
+    encoded_bytes = screenshot_process(state=state)
+    prompt = f"""
+You're an AI Applicant helper that's goal is to help answer questions on behalf of the user.
+
+Your specific task is Markdown reviewer.
+
+Markdown definition: markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
+
+You will look at the current question and the answer and determine one of four things.
+1. correct - the information is correct and fully completed.
+2. incorrect - the answer inputted is wrong based on the User Profile.
+4. more markdown process - after the first step of the markdown process, there is another markdown process that needs to be done.
+5. more questions - after the first step of the markdown process, user inputs formed that need to be handled by the regular answer question process.
+
+Look at the current answer and specifically the current question to see determine your markdown_status!
+
+You only look at the current question markdown process and no other question on the page to determine the markdown_status.
+
+current_answer {current_answer}
+
+EX 1:
+{{
+markdown_status: correct,
+reason: state listed is correct based on the user profile on the question.
+}}
+
+Ex 2:
+{{
+markdown_status: incorrect_and_box_open
+reason: We have inputted the wrong answer even though it says the user is from: {state["user_state"]} due to the User Profile. The box is still open on the current question.
+}}
+
+Ex 3:
+{{
+markdown_status: incorrect_and_box_closed
+reason: We have inputted the wrong answer even though it says the user is from: {state["user_state"]} due to the User Profile. The box is closed on the current question.
+}}
+
+Ex 4:
+{{
+markdown_status: more_markdown
+reason: After the first step there is another button that is loaded that we need to answer on the current question.
+}}
+
+Ex 5:
+{{
+markdown_status: more_questions
+reason: After the first step it appears a text box has loaded and needs to be sent to the more questions process through the current question. 
+}}
+
 
 USER PROFILE:
 
@@ -1031,38 +1232,13 @@ Professional links:
 - LinkedIn: {state["linkedin_url"]}
 - GitHub: {state["github_url"]}
 - Portfolio: {state["portfolio_url"]}
+- Where we found this job: Always choose other or another website or the choice that best resembles the answer ['other', 'another website' or something that is close.]
 
 
 Resume: {state["resume_text"]}
 Cover letter: {state["cover_letter_text"]}
----------------
-
-Example output
-options: [
-{{
-text: Alabama,
-option_number: 1
-}},
-{{
-text: Alaska,
-option_number: 2
-}},
-{{
-text: Arkansas,
-option_number: 3
-}},
-{{
-text: California,
-option_number: 4
-}}
-]
-
-option_choice: 3
-
-current_option: 1
-------------------
 """
-    response = markdown_process_llm2.invoke([
+    response = review_markdown_process_llm2.invoke([
         {
             "role": "user",
             "content": [
@@ -1076,33 +1252,9 @@ current_option: 1
     state = ai_token_tracker(new_tokens=new_tokens, state=state)
     decision = response["parsed"]
     print(f"Markdown decision: {decision}")
-    options = decision["options"]
-    option_choice = decision["option_choice"]
-    current_option = decision["current_option"]
-    arrow_count = option_choice - current_option
-    page.mouse.click(background_x, background_y)
-    page.mouse.click(page_x, page_y)
-    page.keyboard.press("ArrowDown")
-    print(f"How many times we need to move the arrow: {arrow_count}")
-    if arrow_count == 0:
-        page.keyboard.press("Enter")
-    if arrow_count < 0:
-        for i in range(abs(arrow_count)):
-            page.keyboard.press("ArrowUp")
-        page.keyboard.press("Enter")
-    if arrow_count > 0:
-        for i in range(arrow_count):
-            page.keyboard.press("ArrowDown")
-            print(f"Arrow down: {i+1}")
-            time.sleep(1)
-        page.keyboard.press("Enter")
-    encoded_bytes = screenshot_process(state=state)
-    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image = Image.open(buffer)
-    image.show()
-    time.sleep(10)
-    time.sleep(5)
+    markdown_status = decision["markdown_status"]
+    return markdown_status, state
+
 
 def signup_process(state: ApplicationState):
     state = answser_question_process(state=state)
@@ -1144,7 +1296,7 @@ def load_test_user(state: ApplicationState):
     state["date"] = "August 8th 2025"
 
     state["resume_text"] = """
-John Doe
+Peyton Rivers
 Software Engineering Student
 
 Education
@@ -1237,3 +1389,5 @@ def complete_application(url2: str):
         mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage})
 
 complete_application(url)
+
+
