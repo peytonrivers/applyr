@@ -50,8 +50,16 @@ class AnswerItem(TypedDict):
     answer_text: str
     reason: str
 
+class FindIcon(TypedDict):
+    icon: int
+    icon_reason: str
+
 class QuestionProcess(TypedDict):
     items: list[dict]
+
+class ReviewClickAndViewProcess(TypedDict):
+    click_and_view_status: Literal["complete", "more_questions", "incorrect"]
+    reason: str
 
 class SignupProcess(TypedDict):
     input_indexes: list[int] | None
@@ -164,6 +172,7 @@ class MarkdownProcess(TypedDict):
     options: list[dict]
     option_choice: int
     current_option: int
+    option_reason: str
 
 class ReviewMarkdownProcess(TypedDict):
     markdown_status: Literal["correct", "incorrect_and_box_open", "incorrect_and_box_closed", "more_markdown", "more_questions"]
@@ -222,6 +231,8 @@ class ApplicationState(TypedDict):
     # ── Date ────────────────────────────────────
     date: str
 
+    work_experience: list[dict]
+    education: list[dict]
     element_action: FormsAction
     previous_action: Literal["apply", "signup", "forms", "cookies", "verification", "other", "error"] | None
     signup_process: SignupProcess

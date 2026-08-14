@@ -22,7 +22,7 @@ import json
 import time
 import base64
 from datetime import datetime
-from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess
+from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, ReviewClickAndViewProcess, FindIcon
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -36,7 +36,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 
 graph = StateGraph(ApplicationState)
-
+ 
 
 import time
 import os
@@ -62,9 +62,11 @@ forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 question_process_llm2 = llm2.with_structured_output(QuestionProcess, include_raw=True)
 markdown_process_llm2 = llm2.with_structured_output(MarkdownProcess, include_raw=True)
 review_markdown_process_llm2 = llm2.with_structured_output(ReviewMarkdownProcess, include_raw=True)
+review_click_and_view_process_llm2 = llm2.with_structured_output(ReviewClickAndViewProcess, include_raw=True)
+find_icon_process_llm2 = llm2.with_structured_output(FindIcon, include_raw=True)
 url = "https://jobs.fidelity.com/en/jobs/2132114/leap-software-engineer/"
 url = "https://www.allstate.jobs/job/23527822/senior-product-engineer-software-java-/"
-url = "https://www.allstate.jobs/job/23283268/-net-senior-software-engineer/"
+# url = "https://www.allstate.jobs/job/23283268/-net-senior-software-engineer/"
 print(url.title)
 
 input_cost = 0.20 / 1000000
@@ -506,179 +508,13 @@ You're job is to look at the current forms page and to have these responsibiliti
 2. Look at any error's on the page and do your best to handle them
 3. Answer every question by using two things: the user's profile and common sense
 4. Make sure to use common sense while filling out this form
-
-You will answer every question with 1 of these 10 actions.
-
-Immediate Action Section
-
-1. skip - when you want to skip a question
-
-2. fill - when you want to fill out a question
-
-3. fill_with_time - used when you want to fill out an element that requires a time value
-
-4. delete - used when you want to delete the given text
-
-5. delete_and_fill - used when you want to delete the given text and then fill it out with new information
-
-6. click - when you want to click or unclick an element
-
-
-Process Action Section
-
-7. upload_resume - Used when the current question requires the user's resume file to be uploaded.
-
-8. upload_cover_letter - Used when the current question requires the user's cover letter file to be uploaded.
-
-9. click_and_view - Used when clicking an element will reveal or load additional information, questions, fields, or a new section that must be analyzed before continuing.
-
-10. markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
-
-11. submit - Used for buttons that finalize the current page or section, such as Submit, Save and Continue, Continue, Next, or similar progression buttons.
-
-
-Look at the boxes details and the image to help you determine which icon we are looking at.
-
-boxes_details: {boxes_details}
-
-Within the icon's you pick, pick the icon that chooses the option and not the question if possible.
-
-Ex 1:
-{{
-    action: skip,
-    reason: This question has already been filled out correctly and does not require any action.
-}}
-
-Ex 2:
-{{
-    action: fill,
-    action_text: johndoe@gmail.com,
-    icon: 28,
-    reason: This question asks for the user's email address, so the email input should be filled.
-}}
-
-Ex 3:
-{{
-    action: fill_with_time,
-    action_text: 08/01/2020,
-    icon: 35,
-    reason: This question asks for a time, so the time input should be filled with the user's answer.
-}}
-
-Ex 4:
-{{
-    action: delete,
-    icon: 38,
-    reason: This input contains incorrect information and should be cleared.
-}}
-
-Ex 5:
-{{
-    action: delete_and_fill,
-    action_text: John,
-    icon: 42,
-    reason: The current first name is incorrect, so the existing value should be deleted and replaced with John.
-}}
-
-Ex 6:
-{{
-    action: click,
-    icon: 32,
-    reason: This question asks whether the user is a U.S. citizen and Yes is the correct option, so this element should be clicked.
-}}
-
-Ex 7:
-{{
-    action: upload_resume,
-    icon: 50,
-    reason: This question requires the user's resume to be uploaded.
-}}
-
-Ex 8:
-{{
-    action: upload_cover_letter,
-    icon: 52,
-    reason: This question requires the user's cover letter to be uploaded.
-}}
-
-Ex 9:
-{{
-    action: click_and_view,
-    icon: 22,
-    question: Add More Work Experience,
-    reason: The user has additional work experience that needs to be entered. Clicking this element will reveal additional fields that must be analyzed before continuing.
-}}
-
-Ex 10:
-{{
-    action: markdown,
-    icon: 60,
-    question: What U.S. State are you in?,
-    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information.
-}}
-
-Ex 11:
-{{
-    action: submit,
-    icon: 30,
-    reason: This is the Submit, Save and Continue, Continue, or Next button that progresses from the current page or section.
-}}
-
-USER PROFILE:
-
-Account information:
-- User ID: {state["user_id"]}
-- Email: {state["email"]}
-- Password: {state["password"]}
-
-Personal information:
-- First name: {state["first_name"]}
-- Last name: {state["last_name"]}
-- Preferred name: {state["preferred_name"]}
-- Phone number: {state["phone_number"]}
-
-Address:
-- Address line 1: {state["address_line1"]}
-- Address line 2: {state["address_line2"]}
-- City: {state["city"]}
-- State: {state["user_state"]}
-- ZIP code: {state["zip_code"]}
-- Country: {state["country"]}
-- date: {state["date"]}
-
-Employment eligibility:
-- Authorized to work in the United States: {state["work_authorized"]}
-- Requires current or future employment sponsorship: {state["requires_sponsorship"]}
-
-Voluntary self-identification:
-- Veteran: {state["veteran"]}
-- Disability: {state["disability"]}
-
-Professional links:
-- LinkedIn: {state["linkedin_url"]}
-- GitHub: {state["github_url"]}
-- Portfolio: {state["portfolio_url"]}
-
-
-Resume: {state["resume_text"]}
-Cover letter: {state["cover_letter_text"]}
-"""
-
-    prompt = f"""
-You're an AI Applicant Helper who is currently in the forms process.
-
-You're job is to look at the current forms page and to have these responsibilities.
-1. Answer Every Required Question
-2. Look at any error's on the page and do your best to handle them
-3. Answer every question by using two things: the user's profile and common sense
-4. Make sure to use common sense while filling out this form
 5. Use common sense, if we have already answered the required questions and the answers are correct, we can just continue to the next.
 
 You will answer every question with 1 of these 10 actions.
 
 Immediate Action Section
 
-1. skip - when you want to skip a question
+1. skip - when you want to skip a question, make sure you list every question you skip.
 
 2. fill - when you want to fill out a question
 
@@ -697,7 +533,7 @@ Process Action Section
 
 8. upload_cover_letter - Used when the current question requires the user's cover letter file to be uploaded.
 
-9. click_and_view - Used when clicking an element will reveal or load additional information, questions, fields, or a new section that must be analyzed before continuing.
+9. click_and_view - Used when clicking an element will reveal or load additional information, questions, fields, or a new section that must be analyzed before continuing. Only use click and view when you know that you need to fill out more information, not just when you want to see what's behind a button or element.
 
 10. markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
 
@@ -801,7 +637,7 @@ Account information:
 Personal information:
 - First name: {state["first_name"]}
 - Last name: {state["last_name"]}
-- Preferred name: {state["preferred_name"]}
+- Preferred name: None
 - Phone number: {state["phone_number"]}
 
 Address:
@@ -812,7 +648,9 @@ Address:
 - ZIP code: {state["zip_code"]}
 - Country: {state["country"]}
 - date: {state["date"]}
-- how this job was found is always other or another website or something close to other or another website.
+
+Extra details:
+- how this job was found: other or another website or something close to other or another website.
 
 Employment eligibility:
 - Authorized to work in the United States: {state["work_authorized"]}
@@ -821,6 +659,9 @@ Employment eligibility:
 Voluntary self-identification:
 - Veteran: {state["veteran"]}
 - Disability: {state["disability"]}
+
+Work Experience: {state["work_experience"]}
+Education: {state["education"]}
 
 Professional links:
 - LinkedIn: {state["linkedin_url"]}
@@ -861,8 +702,49 @@ def action_process(ai_answers: list[dict], boxes_details: list[dict], state: App
         if not icon:
             continue
         current_box = boxes_details[icon]
-        execute_action(current_answer=current_answer, current_box=current_box, state=state)
+        state = execute_action(current_answer=current_answer, current_box=current_box, state=state)
+        print(f"Action: {action}")
+        print(f"State page after execution: {state["current_page"]["page"]}")
     return state
+
+def find_icon(current_answer: dict, state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes, boxes_details = omniparser_process(state=state)
+    prompt = f"""
+You are an AI Applicant helper and will be helping us find the icon from the current_answer.
+Look at the boxes_details to determine the icon we will be clicking.
+
+
+current_answer: {current_answer}
+
+boxes_details: {boxes_details}
+
+Example output:
+{{
+icon: 48,
+icon_reason: the same question on the current answer is pretty much the same text on this icon.
+}}
+"""
+    response = find_icon_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens = details.usage_metadata
+    state = ai_token_tracker(new_tokens=new_tokens, state=state)
+    decision = response["parsed"]
+    icon = decision.get("icon")
+    current_box = boxes_details[icon]
+    coordinates = current_box["bbox"]
+    full_page_width = 1280
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+    return encoded_bytes, page_x, page_y, state
 
 def execute_action(current_answer: dict, current_box: dict, state: ApplicationState):
     page = state["current_page"]["page"]
@@ -885,6 +767,8 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         page.mouse.click(page_x, page_y)
         time.sleep(2)
         page.keyboard.type(action_text)
+        time.sleep(1)
+        return state
     if action == "fill_with_time":
         action_text = current_answer.get("action_text")
         if not action_text:
@@ -892,12 +776,13 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         page.mouse.click(page_x, page_y)
         page.keyboard.press("ArrowLeft")
         time.sleep(1)
-        page.keyboard.press("ArrowLeft")
-        time.sleep(1)
         page.keyboard.type(action_text)
+        time.sleep(1)
+        return state
     if action == "click":
         page.mouse.click(page_x, page_y)
         time.sleep(2)
+        return state
     if action == "markdown":
         page.evaluate(f"window.scrollTo({page_x}, {page_y})")
 
@@ -911,6 +796,13 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
 
         time.sleep(5)
         print(f"Finished arrow process")
+        return state
+    if action == "click_and_view":
+        encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        page.mouse.click(page_x, page_y)       
+        state = click_and_view_process(current_answer=current_answer, old_bytes=encoded_bytes, state=state)
+        time.sleep(1)
+        return state
     if action == "submit":
         try:
             with page.expect_popup() as new_page:
@@ -927,9 +819,13 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
             }
             print(f"new current page: {state["current_page"]}")
             time.sleep(5)
+            return state
         except Exception:
             page.wait_for_load_state("domcontentloaded")
             time.sleep(5)
+            print(f"State after submit: {state}")
+            return state
+    return state
 
 
 def markdown_process(current_answer: dict, body_text: str, page_x: float, page_y: float, state: ApplicationState):
@@ -969,7 +865,7 @@ Personal information:
 
 - First name: {state["first_name"]}
 - Last name: {state["last_name"]}
-- Preferred name: {state["preferred_name"]}
+- Preferred name: None
 - Phone number: {state["phone_number"]}
 
 Address:
@@ -982,6 +878,9 @@ Address:
 - Country: {state["country"]}
 - date: {state["date"]}
 
+Extra details:
+- how this job was found: other or another website or something close to other or another website.
+
 Employment eligibility:
 
 - Authorized to work in the United States: {state["work_authorized"]}
@@ -991,6 +890,9 @@ Voluntary self-identification:
 
 - Veteran: {state["veteran"]}
 - Disability: {state["disability"]}
+
+Work Experience: {state["work_experience"]}
+Education: {state["education"]}
 
 Professional links:
 
@@ -1049,7 +951,7 @@ option_choice: 3
 
 current_option: 0
 
-## option_reason: There is currently no highlighted option in the photo and we need to move to the third option
+option_reason: There is currently no highlighted option in the photo and we need to move to the third option
 """
 
         response = markdown_process_llm2.invoke([
@@ -1102,14 +1004,6 @@ current_option: 0
                 time.sleep(1)
 
             pyautogui.press("enter")
-
-        encoded_bytes = screenshot_process(state=state)
-        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-        buffer = io.BytesIO(decoded_bytes)
-        image = Image.open(buffer)
-        image.show()
-
-        time.sleep(10)
         time.sleep(5)
 
         markdown_status, state = review_markdown_process(
@@ -1224,6 +1118,9 @@ Employment eligibility:
 - Authorized to work in the United States: {state["work_authorized"]}
 - Requires current or future employment sponsorship: {state["requires_sponsorship"]}
 
+Work Experience: {state["work_experience"]}
+Education: {state["education"]}
+
 Voluntary self-identification:
 - Veteran: {state["veteran"]}
 - Disability: {state["disability"]}
@@ -1255,9 +1152,559 @@ Cover letter: {state["cover_letter_text"]}
     markdown_status = decision["markdown_status"]
     return markdown_status, state
 
+def click_and_view_process(
+    current_answer: dict,
+    old_bytes: str,
+    state: ApplicationState
+):
+    page = state["current_page"]["page"]
+
+    for attempt in range(5):
+
+        print(f"Click and view attempt: {attempt + 1}")
+
+        encoded_bytes, boxes_details = omniparser_process(
+            state=state
+        )
+
+        current_question = current_answer.get("question")
+
+        prompt = f"""
+You're an AI Applicant Helper that is currently inside of the
+Click and View Process.
+
+CLICK AND VIEW DEFINITION:
+
+click_and_view is used when clicking an element reveals additional
+information, questions, fields, or a new section that must be completed.
+
+Your job is to handle ONLY the questions that appeared as a result of
+the original click_and_view action.
+
+CURRENT CLICK AND VIEW QUESTION:
+
+{current_question}
+
+
+IMPORTANT SCOPE RULE:
+
+You are being given TWO images.
+
+IMAGE 1:
+The page BEFORE the click_and_view element was clicked.
+
+IMAGE 2:
+The CURRENT page after the click_and_view element was clicked.
+
+Compare the two images.
+
+ONLY answer questions, inputs, buttons, dropdowns, checkboxes, or
+other elements that belong to the section revealed by:
+
+{current_question}
+
+IGNORE every unrelated question that already existed before
+the click_and_view action.
+
+Even if another question on the page is required, DO NOT answer it
+unless it belongs to the current click_and_view section.
+
+
+You have the same actions available as the regular
+answer question process.
+
+
+Immediate Action Section
+
+1. skip
+- The question inside the current click_and_view section is already
+  correctly completed.
+
+2. fill
+- Fill a normal text input inside the current click_and_view section.
+
+3. fill_with_time
+- Fill an input requiring a date or time.
+
+4. delete
+- Delete incorrect existing text.
+
+5. delete_and_fill
+- Delete incorrect text and replace it.
+
+6. click
+- Click or unclick an element.
+
+
+Process Action Section
+
+7. upload_resume
+- Upload the resume if the CURRENT revealed section specifically
+  requests it.
+
+8. upload_cover_letter
+- Upload the cover letter if the CURRENT revealed section specifically
+  requests it.
+
+9. click_and_view
+- Another element inside the CURRENT revealed section needs to reveal
+  additional required questions.
+
+10. markdown
+- A dropdown, combobox, menu, or selectable list inside the CURRENT
+  revealed section needs to be answered.
+
+11. submit
+- A Save, Done, Continue, Add, Confirm, or similar button specifically
+  belonging to the CURRENT revealed section needs to be clicked.
+
+
+boxes_details:
+
+{boxes_details}
+
+
+IMPORTANT:
+
+Do NOT use buttons such as the application's main Continue or Submit
+button unless that button specifically belongs to the current
+click_and_view section.
+
+For example:
+
+If current_question is:
+
+"Add More Work Experience"
+
+Then you should ONLY worry about things such as:
+
+- Company
+- Position
+- Start Date
+- End Date
+- Description
+- Save Experience
+
+that appeared because Add More Work Experience was clicked.
+
+Do NOT suddenly answer unrelated address, demographic, eligibility,
+education, or other questions elsewhere on the application.
+
+Ex 1:
+{{
+    action: skip,
+    reason: This question has already been filled out correctly and does not require any action.
+}}
+
+Ex 2:
+{{
+    action: fill,
+    action_text: {state["email"]}
+    icon: 28,
+    reason: This question asks for the user's email address, so the email input should be filled with {state["email"]} from the User Profile Section.
+}}
+
+Ex 3:
+{{
+    action: fill_with_time,
+    action_text: 08/01/2020,
+    icon: 35,
+    reason: This question asks for a time, so the time input should be filled with the user's answer.
+}}
+
+Ex 4:
+{{
+    action: delete,
+    icon: 38,
+    reason: This input contains incorrect information and should be cleared with the correct answer in the User Profile Section.
+}}
+
+Ex 5:
+{{
+    action: delete_and_fill,
+    action_text: {state["first_name"]},
+    icon: 42,
+    reason: The current first name is incorrect, so the existing value should be deleted and replaced with {state["first_name"]} due to me checking the User Profile Section.
+}}
+
+Ex 6:
+{{
+    action: click,
+    icon: 32,
+    reason: This question asks whether the user is a U.S. citizen and Yes due to the User Profile Section.
+}}
+
+Ex 7:
+{{
+    action: upload_resume,
+    icon: 50,
+    reason: This question requires the user's resume to be uploaded and there is a resume to be uploaded in the User Profile Section.
+}}
+
+Ex 8:
+{{
+    action: upload_cover_letter,
+    icon: 52,
+    reason: This question requires the user's cover letter to be uploaded and there is a cover letter to be uploaded in the User Profile Section.
+}}
+
+Ex 9:
+{{
+    action: click_and_view,
+    icon: 22,
+    question: Add More Work Experience,
+    reason: The user has one more work experience that needs to be uploaded due to the User Profile Section showing two work experience.
+}}
+
+Ex 10:
+{{
+    action: markdown,
+    icon: 60,
+    current_question: What U.S. State are you in?,
+    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information, I answered this through the User Profile Section.
+}}
+
+Ex 11:
+{{
+    action: submit,
+    icon: 30,
+    reason: This is the Submit, Save and Continue, Continue, or Next button that progresses from the current page or section.
+}}
+
+USER PROFILE:
+
+Account information:
+- User ID: {state["user_id"]}
+- Email: {state["email"]}
+- Password: {state["password"]}
+
+Personal information:
+- First name: {state["first_name"]}
+- Last name: {state["last_name"]}
+- Preferred name: None
+- Phone number: {state["phone_number"]}
+
+Address:
+- Address line 1: {state["address_line1"]}
+- Address line 2: {state["address_line2"]}
+- City: {state["city"]}
+- State: {state["user_state"]}
+- ZIP code: {state["zip_code"]}
+- Country: {state["country"]}
+- Date: {state["date"]}
+
+Employment eligibility:
+- Authorized to work in the United States: {state["work_authorized"]}
+- Requires sponsorship: {state["requires_sponsorship"]}
+
+Voluntary self-identification:
+- Veteran: {state["veteran"]}
+- Disability: {state["disability"]}
+
+Work Experience: {state["work_experience"]}
+Education: {state["education"]}
+
+Professional links:
+- LinkedIn: {state["linkedin_url"]}
+- GitHub: {state["github_url"]}
+- Portfolio: {state["portfolio_url"]}
+
+Resume:
+{state["resume_text"]}
+
+Cover Letter:
+{state["cover_letter_text"]}
+"""
+
+        response = question_process_llm2.invoke([
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": prompt
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{old_bytes}"
+                        }
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{encoded_bytes}"
+                        }
+                    }
+                ]
+            }
+        ])
+
+        details = response["raw"]
+        new_tokens = details.usage_metadata
+
+        state = ai_token_tracker(
+            new_tokens=new_tokens,
+            state=state
+        )
+
+        answers = response["parsed"]
+        ai_answers = answers["items"]
+
+        print(f"Click and view answers: {ai_answers}")
+
+        state = action_process(
+            ai_answers=ai_answers,
+            boxes_details=boxes_details,
+            state=state
+        )
+
+        click_and_view_status, state = review_click_and_view_process(
+            current_answer=current_answer,
+            old_bytes=old_bytes,
+            state=state
+        )
+
+        if click_and_view_status == "complete":
+            print("Click and view process complete")
+            return state
+
+        elif click_and_view_status == "more_questions":
+            print("More click and view questions remain")
+            continue
+
+        elif click_and_view_status == "incorrect":
+            print("Click and view contains incorrect information")
+            continue
+
+        else:
+            return state
+
+    return state
+
+def review_click_and_view_process(
+    current_answer: dict,
+    old_bytes: str,
+    state: ApplicationState
+):
+    time.sleep(2)
+
+    encoded_bytes = screenshot_process(state=state)
+
+    current_question = current_answer.get("question")
+
+    prompt = f"""
+You're an AI Applicant Helper.
+
+Your specific task is Click and View Reviewer.
+
+CLICK AND VIEW DEFINITION:
+
+click_and_view is used when clicking an element reveals additional
+information, questions, fields, or a new section that needs to be
+completed.
+
+The original click_and_view question was:
+
+{current_question}
+
+
+You are given:
+
+IMAGE 1:
+The page BEFORE the click_and_view action happened.
+
+IMAGE 2:
+The CURRENT page.
+
+Compare these images and review ONLY the section associated with:
+
+{current_question}
+
+
+You must choose one of THREE statuses:
+
+
+1. complete
+
+The click_and_view process is fully completed.
+
+All required questions that appeared because of the click_and_view
+action have been answered correctly.
+
+The section may also have been successfully saved and closed.
+
+
+2. more_questions
+
+The click_and_view section is NOT finished.
+
+There are still unanswered required questions, newly revealed
+questions, dropdowns, checkboxes, inputs, or buttons that need to
+be handled.
+
+This includes new questions that appeared because of a previous
+answer inside the click_and_view section.
+
+
+3. incorrect
+
+Something inside the current click_and_view section is incorrect.
+
+Examples:
+
+- an error message appeared
+- an incorrect value was entered
+- a required question was answered incorrectly
+- the section cannot be completed because one of its existing
+  answers must be corrected
+
+
+IMPORTANT:
+
+ONLY review the section created or controlled by:
+
+{current_question}
+
+Do NOT use unrelated questions elsewhere on the application when
+determining the status.
+
+For example:
+
+If the original action was:
+
+"Add More Work Experience"
+
+and Company, Position, Start Date, and End Date appeared,
+
+only judge those fields and the controls belonging to that work
+experience section.
+
+If an unrelated required question such as "Are you a veteran?"
+exists elsewhere on the page, IGNORE IT.
+
+
+CURRENT ANSWER:
+
+{current_answer}
+
+
+USER PROFILE:
+
+First name: {state["first_name"]}
+Last name: {state["last_name"]}
+Email: {state["email"]}
+Phone: {state["phone_number"]}
+
+Address:
+{state["address_line1"]}
+{state["address_line2"]}
+{state["city"]}
+{state["user_state"]}
+{state["zip_code"]}
+{state["country"]}
+
+Work authorized:
+{state["work_authorized"]}
+
+Work Experience: {state["work_experience"]}
+Education: {state["education"]}
+
+Requires sponsorship:
+{state["requires_sponsorship"]}
+
+Veteran:
+{state["veteran"]}
+
+Disability:
+{state["disability"]}
+
+LinkedIn:
+{state["linkedin_url"]}
+
+GitHub:
+{state["github_url"]}
+
+Portfolio:
+{state["portfolio_url"]}
+
+Resume:
+{state["resume_text"]}
+
+Cover Letter:
+{state["cover_letter_text"]}
+
+
+EXAMPLE 1:
+
+{{
+    click_and_view_status: complete,
+    reason: The Add More Work Experience section has been completely
+    filled out and saved.
+}}
+
+
+EXAMPLE 2:
+
+{{
+    click_and_view_status: more_questions,
+    reason: The work experience section still has a required End Date
+    question that has not been answered.
+}}
+
+
+EXAMPLE 3:
+
+{{
+    click_and_view_status: incorrect,
+    reason: The Company field inside the newly added work experience
+    contains an incorrect value and an error is displayed.
+}}
+"""
+
+    response = review_click_and_view_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{old_bytes}"
+                    }
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{encoded_bytes}"
+                    }
+                }
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens = details.usage_metadata
+
+    state = ai_token_tracker(
+        new_tokens=new_tokens,
+        state=state
+    )
+
+    decision = response["parsed"]
+
+    print(f"Click and view review: {decision}")
+
+    click_and_view_status = decision["click_and_view_status"]
+
+    return click_and_view_status, state
 
 def signup_process(state: ApplicationState):
     state = answser_question_process(state=state)
+    return state
     
 """def signup_process(state: ApplicationState):
     old_bytes, ai_answers, boxes_details, state = answer_question_process(state=state)
@@ -1271,11 +1718,11 @@ def load_test_user(state: ApplicationState):
 
     state["first_name"] = "Peyton"
     state["last_name"] = "Rivers"
-    state["preferred_name"] = "John"
 
     state["email"] = "peytonrivers716@gmail.com"
     state["password"] = "Bprivers1!"
     state["phone_number"] = "9197026557"
+    state["preferred_name"] = "None"
 
     state["zip_code"] = "27596"
 
@@ -1294,6 +1741,9 @@ def load_test_user(state: ApplicationState):
     state["github_url"] = "https://github.com/johndoe"
     state["portfolio_url"] = "https://johndoe.dev"
     state["date"] = "August 8th 2025"
+    state["work_experience"] = [{"company": "google", "position": "software engineer intern", "start_date": "May 6th 2026", "end_date": "August 8th 2026"}]
+    state["education"] = [{"school": "UNC Charlotte", "major": "computer science", "start_date": "August 16 2025", "end_date": "May 5th 2029"}]
+
 
     state["resume_text"] = """
 Peyton Rivers
