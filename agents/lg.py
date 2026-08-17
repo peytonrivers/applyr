@@ -1898,3 +1898,5 @@ def complete_application(url2: str):
         mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage})
 
 complete_application(url)
+
+print("hello")
