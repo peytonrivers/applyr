@@ -60,8 +60,6 @@ expiringdict==1.2.2
 Faker==40.36.0
 fastapi==0.139.2
 filelock==3.32.0
-<<<<<<< HEAD
-=======
 flatbuffers==25.12.19
 fonttools==4.63.0
 fsspec==2026.7.0
@@ -76,7 +74,6 @@ google-cloud-storage==3.13.0
 google-crc32c==1.8.0
 google-resumable-media==2.10.0
 googleapis-common-protos==1.75.0
->>>>>>> 7bf833a (updated requirements again)
 greenlet==3.5.3
 grpc-google-iam-v1==0.14.4
 grpcio==1.83.0
