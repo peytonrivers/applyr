@@ -67,8 +67,9 @@ find_icon_process_llm2 = llm2.with_structured_output(FindIcon, include_raw=True)
 url = "https://jobs.fidelity.com/en/jobs/2132114/leap-software-engineer/"
 url = "https://www.allstate.jobs/job/23527822/senior-product-engineer-software-java-/"
 # url = "https://www.allstate.jobs/job/23283268/-net-senior-software-engineer/"
+url = "https://www.allstate.jobs/job/23473343/cloud-services-lead-software-engineer/"
+url = "https://www.allstate.jobs/job/23613565/java-development-lead-systems-engineer/"
 print(url.title)
-
 input_cost = 0.20 / 1000000
 output_cost = 1.25 / 1000000
 cached_cost = 0.02 / 1000000
@@ -76,7 +77,7 @@ cached_cost = 0.02 / 1000000
 def ai_token_tracker(new_tokens: dict, state: ApplicationState):
     token_usage = state["token_usage"]
     print(f"Token usage: {token_usage}")
-    tracker = token_usage["tracker"]
+    tracker = token_usage["tracker"] 
     tracker += 1
     print(f"New count: {tracker}")
     input_tokens = token_usage['input_tokens']
@@ -162,6 +163,12 @@ def omniparser_process(state: ApplicationState):
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    image.show()
+    print(f"Boxes details: {boxes_details}")
+    time.sleep(10)
     return encoded_bytes, boxes_details
 
 
@@ -784,15 +791,19 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         time.sleep(2)
         return state
     if action == "markdown":
+        screenshot = page.screenshot()
+        old_bytes = base64.b64encode(screenshot).decode("utf-8")
         page.evaluate(f"window.scrollTo({page_x}, {page_y})")
 
         time.sleep(1)
         page.mouse.click(page_x, page_y)
         time.sleep(1)
         pyautogui.press("down")
-        time.sleep(1)
+        time.sleep(5)
+        new_screenshot = page.screenshot()
+        new_bytes = base64.b64encode(new_screenshot).decode("utf-8")
         body_text = page.locator("body").inner_text()
-        state = markdown_process(current_answer=current_answer, body_text=body_text, page_x=page_x, page_y=page_y, state=state)
+        state = markdown_process(current_answer=current_answer, old_bytes=old_bytes, new_bytes=new_bytes, body_text=body_text, page_x=page_x, page_y=page_y, state=state)
 
         time.sleep(5)
         print(f"Finished arrow process")
@@ -827,17 +838,65 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
             return state
     return state
 
+def row_change(matrix_image1, matrix_image2):
+    for i in range(len(matrix_image1)):
+        matrix_width1 = matrix_image1[i]
+        matrix_width2 = matrix_image2[i]
+        for l in range(len(matrix_width1)):
+            elem1 = matrix_width1[l]
+            elem2 = matrix_width2[l]
+            for j in range(len(elem1)):
+                num1 = elem1[j]
+                num2 = elem2[j]
+                if num1 != num2:
+                    print(f"Row: {i+1}")
+                    print(elem1)
+                    print(elem2)
+                    return i+1
+        return None
 
-def markdown_process(current_answer: dict, body_text: str, page_x: float, page_y: float, state: ApplicationState):
+def cropped_image_process(encoded_image1: str, encoded_image2: str):
+    decoded_image1 = base64.b64decode(encoded_image1.encode("utf-8"))
+    decoded_image2 = base64.b64decode(encoded_image2.encode("utf-8"))
+    buffer1 = io.BytesIO(decoded_image1)
+    buffer2 = io.BytesIO(decoded_image2)
+    image1 = Image.open(buffer1)
+    image1.show()
+    image2 = Image.open(buffer2)
+    image2.show()
+    matrix_image1 = np.array(image1)
+    matrix_image2 = np.array(image2)
+    first_cropped_row = row_change(matrix_image1=matrix_image1, matrix_image2=matrix_image2)
+    print(f"Firt cropped row: {first_cropped_row}")
+    if not first_cropped_row:
+        return None
+    reversed_stage1 = reversed(matrix_image1)
+    reversed_stage2 = reversed(matrix_image2)
+    reversed_matrix_image1 = list(reversed_stage1)
+    reversed_matrix_image2 = list(reversed_stage2)
+    second_cropped_row = row_change(matrix_image1=reversed_matrix_image1, matrix_image2=reversed_matrix_image2)
+    width_image2, height_image2 = image2.size
+    final_second_cropped_row = height_image2 - second_cropped_row
+    print(f"Final second cropped row: {final_second_cropped_row}")
+    cropped_coordinates = (0, first_cropped_row, width_image2, final_second_cropped_row)
+    cropped_image = image2.crop(cropped_coordinates)
+    cropped_buffer = io.BytesIO()
+    cropped_image.save(cropped_buffer, format="PNG")
+    cropped_bytes = cropped_buffer.getvalue()
+    encoded_cropped_bytes = base64.b64encode(cropped_bytes).decode("utf-8")
+    data = {"image_input": encoded_cropped_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    response_data = response.json()
+    encoded_bytes = response_data["encoded_bytes"]
+    boxes_details = response_data["boxes_details"]
+    return encoded_bytes, boxes_details
+
+def markdown_process(current_answer: dict, old_bytes: str, new_bytes: str, body_text: str, page_x: float, page_y: float, state: ApplicationState):
     page = state["current_page"]["page"]
 
     for attempt in range(5):
-        full_page_width = 1280
-        full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
-        screenshot = page.screenshot()
-        encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
+        encoded_bytes, boxes_details = cropped_image_process(encoded_image1=old_bytes, encoded_image2=new_bytes)
         current_question = current_answer.get("current_question")
-
         prompt = f"""
 You're an AI Applicant Helper that is in the markup process.
 
@@ -1007,7 +1066,7 @@ option_reason: There is currently no highlighted option in the photo and we need
         time.sleep(5)
 
         markdown_status, state = review_markdown_process(
-            current_answer=current_answer,
+        current_answer=current_answer,
             body_text=body_text,
             page_x=page_x,
             page_y=page_y,
@@ -1839,5 +1898,3 @@ def complete_application(url2: str):
         mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage})
 
 complete_application(url)
-
-
