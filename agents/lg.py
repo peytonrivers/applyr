@@ -29,7 +29,6 @@ import numpy as np
 import requests
 
 import pyautogui
-from langchain_ollama import ChatOllama
 
 from langchain_openai import ChatOpenAI
 

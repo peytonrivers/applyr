@@ -13,9 +13,7 @@ import traceback
 
 import pdfplumber
 import json
-import fitz  # PyMuPDF
 from docx import Document #Docx
-import io
 
 load_dotenv()
 
