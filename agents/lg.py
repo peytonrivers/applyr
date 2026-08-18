@@ -162,14 +162,11 @@ def omniparser_process(state: ApplicationState):
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]
-    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    """decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    image.show()
-    print(f"Boxes details: {boxes_details}")
-    time.sleep(10)
+    image.show()"""
     return encoded_bytes, boxes_details
-
 
 def decide_page(state: ApplicationState):
     encoded_bytes = screenshot_process(state)
@@ -752,6 +749,15 @@ icon_reason: the same question on the current answer is pretty much the same tex
     page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
     return encoded_bytes, page_x, page_y, state
 
+def adjust_for_zoom(page_x, page_y, zoom_ratio, viewport_width):
+    scaled_width = viewport_width * zoom_ratio
+    x_offset = (viewport_width - scaled_width) / 2
+
+    new_x = x_offset + (page_x * zoom_ratio)
+    new_y = page_y * zoom_ratio
+
+    return new_x, new_y
+
 def execute_action(current_answer: dict, current_box: dict, state: ApplicationState):
     page = state["current_page"]["page"]
     full_page_width = 1280
@@ -782,6 +788,8 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         page.mouse.click(page_x, page_y)
         page.keyboard.press("ArrowLeft")
         time.sleep(1)
+        page.keyboard.press("ArrowLeft")
+        time.sleep(1)
         page.keyboard.type(action_text)
         time.sleep(1)
         return state
@@ -790,20 +798,16 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         time.sleep(2)
         return state
     if action == "markdown":
-        screenshot = page.screenshot()
-        old_bytes = base64.b64encode(screenshot).decode("utf-8")
-        page.evaluate(f"window.scrollTo({page_x}, {page_y})")
-
+        screenshot1 = page.screenshot()
+        old_bytes = base64.b64encode(screenshot1).decode("utf-8")
         time.sleep(1)
         page.mouse.click(page_x, page_y)
         time.sleep(1)
         pyautogui.press("down")
-        time.sleep(5)
-        new_screenshot = page.screenshot()
-        new_bytes = base64.b64encode(new_screenshot).decode("utf-8")
+        screenshot2 = page.screenshot()
+        new_bytes = base64.b64encode(screenshot2).decode("utf-8")
         body_text = page.locator("body").inner_text()
         state = markdown_process(current_answer=current_answer, old_bytes=old_bytes, new_bytes=new_bytes, body_text=body_text, page_x=page_x, page_y=page_y, state=state)
-
         time.sleep(5)
         print(f"Finished arrow process")
         return state
@@ -852,23 +856,37 @@ def row_change(matrix_image1, matrix_image2):
                     print(elem1)
                     print(elem2)
                     return i+1
-        return None
+    return None
 
-def cropped_image_process(encoded_image1: str, encoded_image2: str):
+def cropped_image_process(encoded_image1: str, encoded_image2: str, process=None):
     decoded_image1 = base64.b64decode(encoded_image1.encode("utf-8"))
     decoded_image2 = base64.b64decode(encoded_image2.encode("utf-8"))
     buffer1 = io.BytesIO(decoded_image1)
     buffer2 = io.BytesIO(decoded_image2)
     image1 = Image.open(buffer1)
-    image1.show()
     image2 = Image.open(buffer2)
-    image2.show()
     matrix_image1 = np.array(image1)
     matrix_image2 = np.array(image2)
     first_cropped_row = row_change(matrix_image1=matrix_image1, matrix_image2=matrix_image2)
     print(f"Firt cropped row: {first_cropped_row}")
     if not first_cropped_row:
-        return None
+        if process:
+            image = pyautogui.screenshot(region=(100, 30, 1200, 780))
+            buffer = io.BytesIO()
+            image.save(buffer, format="PNG")
+            buffer_bytes = buffer.getvalue()
+            encoded_bytes = base64.b64encode(buffer_bytes).decode("utf-8")
+            data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+            response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+            response_data = response.json()
+            boxes_details = response_data["boxes_details"]
+            return encoded_bytes, boxes_details
+        data = {"image_input": encoded_image1, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        response_data = response.json()
+        encoded_bytes = response_data["encoded_bytes"]
+        boxes_details = response_data["boxes_details"]
+        return encoded_bytes, boxes_details
     reversed_stage1 = reversed(matrix_image1)
     reversed_stage2 = reversed(matrix_image2)
     reversed_matrix_image1 = list(reversed_stage1)
@@ -883,6 +901,10 @@ def cropped_image_process(encoded_image1: str, encoded_image2: str):
     cropped_image.save(cropped_buffer, format="PNG")
     cropped_bytes = cropped_buffer.getvalue()
     encoded_cropped_bytes = base64.b64encode(cropped_bytes).decode("utf-8")
+    decoded_bytes = base64.b64decode(encoded_cropped_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    time.sleep(10)
     data = {"image_input": encoded_cropped_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
     response_data = response.json()
@@ -894,7 +916,11 @@ def markdown_process(current_answer: dict, old_bytes: str, new_bytes: str, body_
     page = state["current_page"]["page"]
 
     for attempt in range(5):
-        encoded_bytes, boxes_details = cropped_image_process(encoded_image1=old_bytes, encoded_image2=new_bytes)
+        encoded_bytes, boxes_details = cropped_image_process(encoded_image1=old_bytes, encoded_image2=new_bytes, process="markdown")
+        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        buffer = io.BytesIO(decoded_bytes)
+        image = Image.open(buffer)
+        image.show()
         current_question = current_answer.get("current_question")
         prompt = f"""
 You're an AI Applicant Helper that is in the markup process.
@@ -1041,8 +1067,6 @@ option_reason: There is currently no highlighted option in the photo and we need
         arrow_count = option_choice - current_option
 
         print(f"How many times we need to move the arrow: {arrow_count}")
-
-        pyautogui.moveTo(500, 500, duration=0.2)
 
         if arrow_count == 0:
             pyautogui.press("up")

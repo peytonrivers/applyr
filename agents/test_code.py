@@ -14,7 +14,6 @@ from PIL import Image
 from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, QuestionProcess, MarkdownProcess
 
 from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
 
 import pyautogui
 import time
@@ -129,6 +128,8 @@ body_text = f"""
 `\n\n\n  \n    \n      \n        \n          \n            \n          \n        \n        ApplyR\n      \n\n      \n        Home\n      \n    \n  \n\n\n    \n\n        \n            \n                1\n                \n                2\n                \n                3\n            \n            Step 3 of 3\n        \n\n        \n            Complete Your Profile\n            \n                Just a few more details to get you started.\n            \n\n            \n\n                \n                    \n                        Country\n                        \n                            Select a Country\n                            United States\n                            Canada\n                            Mexico\n                            United Kingdom\n                            Australia\n                            Brazil\n                            China\n                            France\n                            Germany\n                            India\n                            Ireland\n                            Italy\n                            Japan\n                            Netherlands\n                            New Zealand\n                            Nigeria\n                            South Korea\n                            Spain\n                            Sweden\n                        \n                    \n\n                    \n                        State\n                        \n                            Select a State or Territory\n                            Alabama\n                            Alaska\n                            Arizona\n                            Arkansas\n                            California\n                            Colorado\n                            Connecticut\n                            Delaware\n                            District of Columbia\n                            Florida\n                            Georgia\n                            Hawaii\n                            Idaho\n                            Illinois\n                            Indiana\n                            Iowa\n                            Kansas\n                            Kentucky\n                            Louisiana\n                            Maine\n                            Maryland\n                            Massachusetts\n                            Michigan\n                            Minnesota\n                            Mississippi\n                            Missouri\n                            Montana\n                            Nebraska\n                            Nevada\n                            New Hampshire\n                            New Jersey\n                            New Mexico\n                            New York\n                            North Carolina\n                            North Dakota\n                            Ohio\n                            Oklahoma\n                            Oregon\n                            Pennsylvania\n                            Rhode Island\n                            South Carolina\n                            South Dakota\n                            Tennessee\n                            Texas\n                            Utah\n                            Vermont\n                            Virginia\n                            Washington\n                            West Virginia\n                            Wisconsin\n                            Wyoming\n                        \n                    \n                \n\n                \n                    \n                        City\n                        \n                    \n\n                    \n                        Zip Code\n                        \n                    \n                \n\n                \n                    Are you authorized to work in the U.S.?\n                    \n                        \n                            \n                            Yes\n                        \n\n                        \n                            \n                            No\n                        \n                    \n                \n\n                \n                    \n                        Disability Status\n                        \n                            Select Disability Status\n                            Yes\n                            No\n                            I Prefer Not to Say\n                        \n                    \n\n                    \n                        Veteran Status\n                        \n                            Select Veteran Status\n                            Yes\n                            No\n                            Protected Veteran\n                            Recently Separated Veteran\n                            Disabled Veteran\n                            I Prefer Not to Say\n                        \n                    \n                \n\n                \n                    Gender\n                    \n                        \n                            \n                            Male\n                        \n\n                        \n                            \n                            Female\n                        \n                    \n                \n\n                \n                    Ethnicity\n                    \n                        Select Ethnicity\n                        American Indian or Alaska Native\n                        Asian\n                        Black or African American\n                        Hispanic or Latino\n                        Native Hawaiian or Other Pacific Islander\n                        White\n                        Two or More Races\n                        Other\n                        I Prefer Not to Say\n                    \n                \n\n                \n                    Finalize & Submit\n                \n\n            \n        \n    \n\n\n\n    \n        \n            ✓\n            ApplyR\n        \n        © 2026 ApplyR. All rights reserved.\n    
 """
 
+
+
 with Stealth().use_sync(sync_playwright()) as p:
     browser = p.chromium.launch(headless=False)
     page = browser.new_page()
@@ -138,127 +139,5 @@ with Stealth().use_sync(sync_playwright()) as p:
     full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     page.set_viewport_size({"width": full_page_width, "height": full_page_height})
     body_text = page.locator("body").inner_text()
-    screenshot = page.screenshot()
-    encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
-    data = {"image_input": encoded_bytes, "box_threshold": 0.02, "iou_threshold": 0.05, "use_paddleocr": True, "imgsz": 900}
-    data = requests.post("http://127.0.0.1:8000/image_process", json=data)
-    data = data.json()
-    boxes_details = data["boxes_details"]
-    encoded_bytes2 = data["encoded_bytes"]
-    prompt1 = f"""
-Find the first markdown icon.
-markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
-use image and boxes details to find the icon.
-boxes_details: {boxes_details}
-
-make sure the output is a dictionary
-
-Example output:
-{{
-icon: 17,
-reason: It's question asked us what state we are from
-}}
-"""
-    response1 = llm.invoke([
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt1},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
-            ]
-        }
-    ])
-    prompt = f"""
-You're an AI Applicant Helper that is in the markup process.
-
-Markup definition: markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
-
-You're goal is to look at the the body text + the image to find all the options for the question we are in.
-
-current_question:
-body_text: {body_text}
-
-You will showcase all the options with the text and the option number in order.
-You will showcase the option choice you hope to click.
-You will also showcase the current option that our keyboard is at, so we know how many times we need to use the keyboard to go up or down to click the option_choice.
-Use the user info and common sense to help answer the markup.
-
-USER PROFILE
-User is from: Arkansas
----------------
-
-Example output
-options: [
-{{
-text: Alabama,
-option_number: 1
-}},
-{{
-text: Alaska,
-option_number: 2
-}},
-{{
-text: Arkansas,
-option_number: 3
-}},
-{{
-text: California,
-option_number: 4
-}}
-]
-
-option_choice: 3
-
-current_option: 1
-------------------
-"""
-    details = response1.content
-    details = json.loads(details)
-    print(f"details type: {type(details)}")
-    print(f"Details: {details}")
-    icon = details["icon"]
-    specific_box = boxes_details[icon]
-    print(f"specific box: {specific_box}")
-    coordinates = specific_box["bbox"]
-    print(f"coordinates: {coordinates}")
-    x1 = coordinates[0]
-    y1 = coordinates[1]
-    x2 = coordinates[2]
-    y2 = coordinates[3]
-    middle_x = (x1 + x2) / 2
-    middle_y = (y1 + y2) / 2
-    page_x = (middle_x * full_page_width)
-    page_y = (middle_y * full_page_height)
-    page.evaluate(f"window.scrollTo({page_x}, {page_y})")
-    time.sleep(10)
-    page.mouse.click(page_x, page_y)
-
-    time.sleep(1)
-
-    print(page.evaluate("""
-        () => ({
-            tag: document.activeElement?.tagName,
-            type: document.activeElement?.type,
-            value: document.activeElement?.value
-        })
-    """))
-
-    # Move physical OS mouse away from PyAutoGUI fail-safe corners
-    pyautogui.moveTo(500, 500, duration=0.2)
-
-    time.sleep(0.5)
-
-    for _ in range(3):
-        pyautogui.press("down")
-        time.sleep(0.2)
-
-    pyautogui.press("enter")
-
-    time.sleep(5)
-    screenshot = page.screenshot()
-    buffer2 = io.BytesIO(screenshot)
-    im = Image.open(buffer2)
-    im.show()
-
-    time.sleep(5)
-    
+    image = pyautogui.screenshot(region=(100, 30, 1200, 780))
+    image.show()
