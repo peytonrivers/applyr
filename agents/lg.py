@@ -27,6 +27,7 @@ import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import requests
+import cv2
 
 import pyautogui
 
@@ -108,6 +109,30 @@ def ai_token_tracker(new_tokens: dict, state: ApplicationState):
     print(f"Total ${total}")
     return state
 
+def empty_pixel_process(encoded_bytes: str, coordinates: list[list]):
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    format = image.format
+    if format != "PNG":
+        image.save("my_screenshot.png")
+    image_width, image_height = image.size
+    np_image = np.array(image)
+    cv_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    black = (0, 0, 0)
+    for i in range(len(coordinates)):
+        coordinate = coordinates[i]
+        x1 = (coordinate[0] * image_width)
+        y1 = (coordinate[1] * image_height)
+        x2 = (coordinate[2] * image_width)
+        y2 = (coordinate[3] * image_height)
+        height_diff = y2 - y1
+        for l in range(height_diff):
+            cv_image = cv2.line(cv_image, (x1, y1), (x2, y1), black, 3)
+            y1 += 1
+    cv2.imshow("output", cv_image)
+
+
 def coordinates_process(coordinates: list, full_page_width, full_page_height):
     x1 = coordinates[0]
     y1 = coordinates[1]
@@ -133,6 +158,9 @@ def time_coordinates_process(coordinates: list, full_page_width, full_page_heigh
     print(f"Regular coordinates, x: {page_x}, y: {page_y}")
     return left_x, page_y
 
+def find_empty_coordinates(boxes_details: str, full_page_width, full_page_height):
+    print("hello")
+
 def page_loaded(state: ApplicationState):
     page = state["current_page"]["page"]
     for i in range(7):
@@ -156,12 +184,20 @@ def screenshot_process(state: ApplicationState):
 
 def omniparser_process(state: ApplicationState):
     encoded_bytes = screenshot_process(state)
+    page = state["current_page"]["page"]
+    full_page_width = 1280
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     print(f"encoded bytes type: {type(encoded_bytes)})")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]
+    coordinates = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        coordinate = current_box["bbox"]
+        coordinates.append(coordinate)
     """decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
@@ -920,7 +956,6 @@ def markdown_process(current_answer: dict, old_bytes: str, new_bytes: str, body_
         decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
         buffer = io.BytesIO(decoded_bytes)
         image = Image.open(buffer)
-        image.show()
         current_question = current_answer.get("current_question")
         prompt = f"""
 You're an AI Applicant Helper that is in the markup process.

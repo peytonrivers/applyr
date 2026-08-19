@@ -15,6 +15,9 @@ from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQue
 
 from langchain_openai import ChatOpenAI
 
+
+import cv2
+import numpy as np
 import pyautogui
 import time
 import os
@@ -49,9 +52,43 @@ output_cost = 1.20 / 1000000
 cached_cost = 0.02 / 1000000
     
 
+def empty_pixel_process(encoded_bytes: str, coordinates: list[list]):
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    format = image.format
+    if format != "PNG":
+        image.save("my_screenshot.png")
+    image_width, image_height = image.size
+    print(f"image width: {image_width}")
+    print(f"image height: {image_height}")
+    np_image = np.array(image)
+    cv_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
+    black = (0, 0, 0)
+    for i in range(len(coordinates)):
+        coordinate = coordinates[i]
+        x1 = round(coordinate[0] * image_width)
+        print(f"x1: {x1}")
+        y1 = round(coordinate[1] * image_height)
+        print(f"y1: {y1}")
+        x2 = round(coordinate[2] * image_width)
+        print(f"x2: {x2}")
+        y2 = round(coordinate[3] * image_height)
+        print(f"y2: {y2}")
+        height_diff = y2 - y1
+        print(f"height diff: {height_diff}")
+        for l in range(height_diff):
+            cv_image = cv2.line(cv_image, (x1, y1), (x2, y1), black, 3)
+            y1 += 1
+    cv2.imshow('Window Title', cv_image)
 
+    # 3. Wait infinitely until any key is pressed
+    cv2.waitKey(0)
 
-"""file_path = "/Users/peytonrivers/Desktop/small7.png"
+    # 4. Clean up and close the window safely
+    cv2.destroyAllWindows()
+
+file_path = "/Users/peytonrivers/Desktop/small7.png"
 img = Image.open(file_path)
 buffer = io.BytesIO()
 image = img.save(buffer, format="PNG")
@@ -60,7 +97,15 @@ encoded_bytes = base64.b64encode(byt).decode("utf-8")
 data = {"image_input": encoded_bytes, "box_threshold": 0.02, "iou_threshold": 0.05, "use_paddleocr": True, "imgsz": 900}
 data = requests.post("http://127.0.0.1:8000/image_process", json=data)
 data = data.json()
-encoded_bytes = data["encoded_bytes"]"""
+encoded_bytes = data["encoded_bytes"]
+boxes_details = data["boxes_details"]
+coordinates = []
+for i in range(len(boxes_details)):
+    current_box = boxes_details[i]
+    coordinate = current_box["bbox"]
+    coordinates.append(coordinate)
+empty_pixel_process(encoded_bytes, coordinates)
+
 
 
 
@@ -130,14 +175,13 @@ body_text = f"""
 
 
 
-with Stealth().use_sync(sync_playwright()) as p:
+"""with Stealth().use_sync(sync_playwright()) as p:
     browser = p.chromium.launch(headless=False)
     page = browser.new_page()
     page.goto(url)
     page.wait_for_load_state("load")
     full_page_width = 1280
-    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     page.set_viewport_size({"width": full_page_width, "height": full_page_height})
     body_text = page.locator("body").inner_text()
     image = pyautogui.screenshot(region=(100, 30, 1200, 780))
-    image.show()
+    image.show()"""
