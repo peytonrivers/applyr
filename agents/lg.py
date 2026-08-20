@@ -109,7 +109,7 @@ def ai_token_tracker(new_tokens: dict, state: ApplicationState):
     print(f"Total ${total}")
     return state
 
-def empty_pixel_process(encoded_bytes: str, coordinates: list[list]):
+def empty_pixel_process(encoded_bytes: str, coordinates: list[list], full_page_width: int, full_page_height: int):
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
@@ -122,15 +122,80 @@ def empty_pixel_process(encoded_bytes: str, coordinates: list[list]):
     black = (0, 0, 0)
     for i in range(len(coordinates)):
         coordinate = coordinates[i]
-        x1 = (coordinate[0] * image_width)
-        y1 = (coordinate[1] * image_height)
-        x2 = (coordinate[2] * image_width)
-        y2 = (coordinate[3] * image_height)
+        x1 = round(coordinate[0] * image_width)
+        y1 = round(coordinate[1] * image_height)
+        x2 = round(coordinate[2] * image_width)
+        y2 = round(coordinate[3] * image_height)
         height_diff = y2 - y1
         for l in range(height_diff):
             cv_image = cv2.line(cv_image, (x1, y1), (x2, y1), black, 3)
             y1 += 1
-    cv2.imshow("output", cv_image)
+    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+    _, cv_image = cv2.threshold(cv_image, 127, 255, cv2.THRESH_BINARY)
+    image_height, image_width = cv_image.shape
+
+    mod_width = image_width % 5
+    mod_height = image_height % 5
+
+    new_width = image_width - mod_width
+    new_height = image_height - mod_height
+
+    width_divider = int(new_width / 5)
+    height_divider = int(new_height / 5)
+
+    width_index = [new_width]
+    height_index = [new_height]
+    for size in range(4):
+        new_height -= height_divider
+        new_width -= width_divider
+        height_index.insert(0, new_height)
+        width_index.insert(0, new_width)
+
+    perfect_section = width_divider * height_divider
+
+    section_coordinates = []
+
+    for p in range(len(height_index)):
+        current_height = height_index[p]
+        for o in range(len(width_index)):
+            current_width = width_index[o]
+            section_coordinates.append([current_height - height_divider,current_width - width_divider,current_height, current_width])
+    white_section_tracker = []
+
+    for i in range(len(height_index)):
+        current_height = height_index[i]
+        if i == 0:
+            prior_height = 0
+        else:
+            prior_height = height_index[i-1]
+        for l in range(len(width_index)):
+            white_pixel_tracker = 0
+            current_width = width_index[l]
+            if l == 0:
+                prior_width = 0
+            else:
+                prior_width = width_index[l-1]
+            for j in range(prior_height, current_height):
+                for m in range(prior_width, current_width):
+                    current_pixel = cv_image[j, m]
+                    if current_pixel == 255:
+                        white_pixel_tracker += 1
+            white_section_tracker.append(white_pixel_tracker)
+    max_section = white_section_tracker[0]
+    max_index = 0
+    for n in range(len(white_section_tracker)):
+        current_section = white_section_tracker[n]
+        if current_section > max_section:
+            max_section = current_section
+            max_index = n
+    max_section_coordinates = section_coordinates[max_index]
+    y1, x1, y2, x2 = max_section_coordinates
+
+    cropped_x = (x1 + x2) / 2
+    cropped_y = (y1 + y2) / 2
+    white_x = (full_page_width / image_width ) * cropped_x
+    white_y = (full_page_height / image_height) * cropped_y
+    return white_x, white_y
 
 
 def coordinates_process(coordinates: list, full_page_width, full_page_height):
@@ -143,23 +208,6 @@ def coordinates_process(coordinates: list, full_page_width, full_page_height):
     page_x = (middle_x * full_page_width)
     page_y = (middle_y * full_page_height)
     return page_x, page_y
-
-def time_coordinates_process(coordinates: list, full_page_width, full_page_height):
-    x1 = coordinates[0]
-    y1 = coordinates[1]
-    x2 = coordinates[2]
-    y2 = coordinates[3]
-    middle_x = (x1 + x2) / 2
-    left_y = (y1 + y2) / 2
-    left_x = (x1 * full_page_width)
-    page_y = (left_y * full_page_height)
-    page_x = (middle_x * full_page_width)
-    print(f"Time coordinates, x: {left_x}, y: {page_y}")
-    print(f"Regular coordinates, x: {page_x}, y: {page_y}")
-    return left_x, page_y
-
-def find_empty_coordinates(boxes_details: str, full_page_width, full_page_height):
-    print("hello")
 
 def page_loaded(state: ApplicationState):
     page = state["current_page"]["page"]
@@ -538,7 +586,16 @@ def apply_action(icon: int, boxes_details: json, state: ApplicationState):
 
 # The marking to where the new signup process
 def answser_question_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+    full_page_width = 1280
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     encoded_bytes, boxes_details = omniparser_process(state=state)
+    coordinates = []
+    for coord in range(len(boxes_details)):
+        current_box = boxes_details[coord]
+        coordinate = current_box["bbox"]
+        coordinates.append(coordinate)
+    white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
     prompt = f"""
 You're an AI Applicant Helper who is currently in the forms process.
 
@@ -727,10 +784,10 @@ Cover letter: {state["cover_letter_text"]}
     answers = response["parsed"]
     ai_answers = answers["items"]
     print(f"AI Answers: {ai_answers}")
-    state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state)
+    state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, white_x=white_x, white_y=white_y)
     return state
 
-def action_process(ai_answers: list[dict], boxes_details: list[dict], state: ApplicationState):
+def action_process(ai_answers: list[dict], boxes_details: list[dict], state: ApplicationState, white_x=None, white_y=None):
     ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "fill_with_time": 2, "delete": 3, "delete_and_fill": 4, "click": 5, "upload_resume": 6, "upload_cover_letter": 7, "markdown": 8, "click_and_view": 9, "submit": 10}.get(x["action"].lower(), 999))
     for i in range(len(ai_answers)):
         current_answer = ai_answers[i]
@@ -741,7 +798,7 @@ def action_process(ai_answers: list[dict], boxes_details: list[dict], state: App
         if not icon:
             continue
         current_box = boxes_details[icon]
-        state = execute_action(current_answer=current_answer, current_box=current_box, state=state)
+        state = execute_action(current_answer=current_answer, current_box=current_box, state=state, white_x=white_x, white_y=white_y)
         print(f"Action: {action}")
         print(f"State page after execution: {state["current_page"]["page"]}")
     return state
@@ -794,7 +851,7 @@ def adjust_for_zoom(page_x, page_y, zoom_ratio, viewport_width):
 
     return new_x, new_y
 
-def execute_action(current_answer: dict, current_box: dict, state: ApplicationState):
+def execute_action(current_answer: dict, current_box: dict, state: ApplicationState, white_x=None, white_y=None):
     page = state["current_page"]["page"]
     full_page_width = 1280
     full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
@@ -816,6 +873,8 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         time.sleep(2)
         page.keyboard.type(action_text)
         time.sleep(1)
+        if white_x and white_y:
+            page.mouse.click(page_x, page_y)
         return state
     if action == "fill_with_time":
         action_text = current_answer.get("action_text")
@@ -824,10 +883,10 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         page.mouse.click(page_x, page_y)
         page.keyboard.press("ArrowLeft")
         time.sleep(1)
-        page.keyboard.press("ArrowLeft")
-        time.sleep(1)
         page.keyboard.type(action_text)
         time.sleep(1)
+        if white_x and white_y:
+            page.mouse.click(page_x, page_y)
         return state
     if action == "click":
         page.mouse.click(page_x, page_y)
@@ -843,7 +902,7 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         screenshot2 = page.screenshot()
         new_bytes = base64.b64encode(screenshot2).decode("utf-8")
         body_text = page.locator("body").inner_text()
-        state = markdown_process(current_answer=current_answer, old_bytes=old_bytes, new_bytes=new_bytes, body_text=body_text, page_x=page_x, page_y=page_y, state=state)
+        # state = markdown_process(current_answer=current_answer, old_bytes=old_bytes, new_bytes=new_bytes, body_text=body_text, page_x=page_x, page_y=page_y, state=state)
         time.sleep(5)
         print(f"Finished arrow process")
         return state
@@ -1283,6 +1342,13 @@ def click_and_view_process(
         encoded_bytes, boxes_details = omniparser_process(
             state=state
         )
+
+        encoded_bytes, boxes_details = cropped_image_process(encoded_image1=old_bytes, encoded_image2=encoded_bytes)
+
+        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        buffer = io.BytesIO(decoded_bytes)
+        image = Image.open(buffer)
+        image.show()
 
         current_question = current_answer.get("question")
 

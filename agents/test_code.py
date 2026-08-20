@@ -52,7 +52,7 @@ output_cost = 1.20 / 1000000
 cached_cost = 0.02 / 1000000
     
 
-def empty_pixel_process(encoded_bytes: str, coordinates: list[list]):
+def empty_pixel_process(encoded_bytes: str, coordinates: list[list], full_page_width: int, full_page_height: int):
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
@@ -60,33 +60,86 @@ def empty_pixel_process(encoded_bytes: str, coordinates: list[list]):
     if format != "PNG":
         image.save("my_screenshot.png")
     image_width, image_height = image.size
-    print(f"image width: {image_width}")
-    print(f"image height: {image_height}")
     np_image = np.array(image)
     cv_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
     black = (0, 0, 0)
     for i in range(len(coordinates)):
         coordinate = coordinates[i]
         x1 = round(coordinate[0] * image_width)
-        print(f"x1: {x1}")
         y1 = round(coordinate[1] * image_height)
-        print(f"y1: {y1}")
         x2 = round(coordinate[2] * image_width)
-        print(f"x2: {x2}")
         y2 = round(coordinate[3] * image_height)
-        print(f"y2: {y2}")
         height_diff = y2 - y1
-        print(f"height diff: {height_diff}")
         for l in range(height_diff):
             cv_image = cv2.line(cv_image, (x1, y1), (x2, y1), black, 3)
             y1 += 1
-    cv2.imshow('Window Title', cv_image)
+    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+    _, cv_image = cv2.threshold(cv_image, 127, 255, cv2.THRESH_BINARY)
+    image_height, image_width = cv_image.shape
 
-    # 3. Wait infinitely until any key is pressed
-    cv2.waitKey(0)
+    mod_width = image_width % 5
+    mod_height = image_height % 5
 
-    # 4. Clean up and close the window safely
-    cv2.destroyAllWindows()
+    new_width = image_width - mod_width
+    new_height = image_height - mod_height
+
+    width_divider = int(new_width / 5)
+    height_divider = int(new_height / 5)
+
+    width_index = [new_width]
+    height_index = [new_height]
+    for size in range(4):
+        new_height -= height_divider
+        new_width -= width_divider
+        height_index.insert(0, new_height)
+        width_index.insert(0, new_width)
+
+    perfect_section = width_divider * height_divider
+
+    section_coordinates = []
+
+    for p in range(len(height_index)):
+        current_height = height_index[p]
+        for o in range(len(width_index)):
+            current_width = width_index[o]
+            section_coordinates.append([current_height - height_divider,current_width - width_divider,current_height, current_width])
+    white_section_tracker = []
+
+    for i in range(len(height_index)):
+        current_height = height_index[i]
+        if i == 0:
+            prior_height = 0
+        else:
+            prior_height = height_index[i-1]
+        for l in range(len(width_index)):
+            white_pixel_tracker = 0
+            current_width = width_index[l]
+            if l == 0:
+                prior_width = 0
+            else:
+                prior_width = width_index[l-1]
+            for j in range(prior_height, current_height):
+                for m in range(prior_width, current_width):
+                    current_pixel = cv_image[j, m]
+                    if current_pixel == 255:
+                        white_pixel_tracker += 1
+            white_section_tracker.append(white_pixel_tracker)
+    max_section = white_section_tracker[0]
+    max_index = 0
+    for n in range(len(white_section_tracker)):
+        current_section = white_section_tracker[n]
+        if current_section > max_section:
+            max_section = current_section
+            max_index = n
+    max_section_coordinates = section_coordinates[max_index]
+    y1, x1, y2, x2 = max_section_coordinates
+
+    cropped_x = (x1 + x2) / 2
+    cropped_y = (y1 + y2) / 2
+    white_x = (full_page_width / image_width ) * cropped_x
+    white_y = (full_page_height / image_height) * cropped_y
+    return white_x, white_y
+
 
 file_path = "/Users/peytonrivers/Desktop/small7.png"
 img = Image.open(file_path)
@@ -104,7 +157,11 @@ for i in range(len(boxes_details)):
     current_box = boxes_details[i]
     coordinate = current_box["bbox"]
     coordinates.append(coordinate)
-empty_pixel_process(encoded_bytes, coordinates)
+
+
+white_x, white_y = empty_pixel_process(encoded_bytes, coordinates)
+print(f"white x: {white_x}")
+print(f"white y: {white_y}")
 
 
 
