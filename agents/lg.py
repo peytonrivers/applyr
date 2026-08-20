@@ -645,7 +645,6 @@ Within the icon's you pick, pick the icon that chooses the option and not the qu
 Ex 1:
 {{
     action: skip,
-    reason: This question has already been filled out correctly and does not require any action.
 }}
 
 Ex 2:
@@ -653,7 +652,6 @@ Ex 2:
     action: fill,
     action_text: {state["email"]}
     icon: 28,
-    reason: This question asks for the user's email address, so the email input should be filled with {state["email"]} from the User Profile Section.
 }}
 
 Ex 3:
@@ -661,14 +659,12 @@ Ex 3:
     action: fill_with_time,
     action_text: 08/01/2020,
     icon: 35,
-    reason: This question asks for a time, so the time input should be filled with the user's answer.
 }}
 
 Ex 4:
 {{
     action: delete,
     icon: 38,
-    reason: This input contains incorrect information and should be cleared with the correct answer in the User Profile Section.
 }}
 
 Ex 5:
@@ -676,28 +672,24 @@ Ex 5:
     action: delete_and_fill,
     action_text: {state["first_name"]},
     icon: 42,
-    reason: The current first name is incorrect, so the existing value should be deleted and replaced with {state["first_name"]} due to me checking the User Profile Section.
 }}
 
 Ex 6:
 {{
     action: click,
     icon: 32,
-    reason: This question asks whether the user is a U.S. citizen and Yes due to the User Profile Section.
 }}
 
 Ex 7:
 {{
     action: upload_resume,
     icon: 50,
-    reason: This question requires the user's resume to be uploaded and there is a resume to be uploaded in the User Profile Section.
 }}
 
 Ex 8:
 {{
     action: upload_cover_letter,
     icon: 52,
-    reason: This question requires the user's cover letter to be uploaded and there is a cover letter to be uploaded in the User Profile Section.
 }}
 
 Ex 9:
@@ -705,7 +697,6 @@ Ex 9:
     action: click_and_view,
     icon: 22,
     question: Add More Work Experience,
-    reason: The user has one more work experience that needs to be uploaded due to the User Profile Section showing two work experience.
 }}
 
 Ex 10:
@@ -713,14 +704,12 @@ Ex 10:
     action: markdown,
     icon: 60,
     current_question: What U.S. State are you in?,
-    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information, I answered this through the User Profile Section.
 }}
 
 Ex 11:
 {{
     action: submit,
     icon: 30,
-    reason: This is the Submit, Save and Continue, Continue, or Next button that progresses from the current page or section.
 }}
 
 USER PROFILE Section:
@@ -842,15 +831,6 @@ icon_reason: the same question on the current answer is pretty much the same tex
     page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
     return encoded_bytes, page_x, page_y, state
 
-def adjust_for_zoom(page_x, page_y, zoom_ratio, viewport_width):
-    scaled_width = viewport_width * zoom_ratio
-    x_offset = (viewport_width - scaled_width) / 2
-
-    new_x = x_offset + (page_x * zoom_ratio)
-    new_y = page_y * zoom_ratio
-
-    return new_x, new_y
-
 def execute_action(current_answer: dict, current_box: dict, state: ApplicationState, white_x=None, white_y=None):
     page = state["current_page"]["page"]
     full_page_width = 1280
@@ -907,9 +887,11 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
         print(f"Finished arrow process")
         return state
     if action == "click_and_view":
+        old_page = page.screenshot()
+        old_bytes = base64.b64encode(old_page).decode("utf-8")
         encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
         page.mouse.click(page_x, page_y)       
-        state = click_and_view_process(current_answer=current_answer, old_bytes=encoded_bytes, state=state)
+        state = click_and_view_process(current_answer=current_answer, old_bytes=old_bytes, state=state)
         time.sleep(1)
         return state
     if action == "submit":
@@ -1240,31 +1222,26 @@ current_answer {current_answer}
 EX 1:
 {{
 markdown_status: correct,
-reason: state listed is correct based on the user profile on the question.
 }}
 
 Ex 2:
 {{
 markdown_status: incorrect_and_box_open
-reason: We have inputted the wrong answer even though it says the user is from: {state["user_state"]} due to the User Profile. The box is still open on the current question.
 }}
 
 Ex 3:
 {{
 markdown_status: incorrect_and_box_closed
-reason: We have inputted the wrong answer even though it says the user is from: {state["user_state"]} due to the User Profile. The box is closed on the current question.
 }}
 
 Ex 4:
 {{
 markdown_status: more_markdown
-reason: After the first step there is another button that is loaded that we need to answer on the current question.
 }}
 
 Ex 5:
 {{
 markdown_status: more_questions
-reason: After the first step it appears a text box has loaded and needs to be sent to the more questions process through the current question. 
 }}
 
 
@@ -1343,12 +1320,24 @@ def click_and_view_process(
             state=state
         )
 
-        encoded_bytes, boxes_details = cropped_image_process(encoded_image1=old_bytes, encoded_image2=encoded_bytes)
+        new_screenshot = page.screenshot()
+        new_bytes = base64.b64encode(new_screenshot).decode("utf-8")
 
-        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        encoded_bytes, boxes_details = cropped_image_process(encoded_image1=old_bytes, encoded_image2=new_bytes)
+
+        decoded_old = base64.b64decode(old_bytes.encode("utf-8"))
+        old_buffer = io.BytesIO(decoded_old)
+        old_image = Image.open(old_buffer)
+        old_image.show()
+        decoded_bytes = base64.b64decode(new_bytes.encode("utf-8"))
         buffer = io.BytesIO(decoded_bytes)
         image = Image.open(buffer)
         image.show()
+
+        cropped_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        cropped_buffer = io.BytesIO(cropped_bytes)
+        cropped_image = Image.open(cropped_buffer)
+        cropped_image.show()
 
         current_question = current_answer.get("question")
 
@@ -1361,9 +1350,6 @@ CLICK AND VIEW DEFINITION:
 click_and_view is used when clicking an element reveals additional
 information, questions, fields, or a new section that must be completed.
 
-Your job is to handle ONLY the questions that appeared as a result of
-the original click_and_view action.
-
 CURRENT CLICK AND VIEW QUESTION:
 
 {current_question}
@@ -1371,31 +1357,14 @@ CURRENT CLICK AND VIEW QUESTION:
 
 IMPORTANT SCOPE RULE:
 
-You are being given TWO images.
-
-IMAGE 1:
-The page BEFORE the click_and_view element was clicked.
-
-IMAGE 2:
-The CURRENT page after the click_and_view element was clicked.
-
-Compare the two images.
-
-ONLY answer questions, inputs, buttons, dropdowns, checkboxes, or
-other elements that belong to the section revealed by:
-
-{current_question}
-
 IGNORE every unrelated question that already existed before
 the click_and_view action.
 
 Even if another question on the page is required, DO NOT answer it
 unless it belongs to the current click_and_view section.
 
-
 You have the same actions available as the regular
 answer question process.
-
 
 Immediate Action Section
 
@@ -1476,7 +1445,6 @@ education, or other questions elsewhere on the application.
 Ex 1:
 {{
     action: skip,
-    reason: This question has already been filled out correctly and does not require any action.
 }}
 
 Ex 2:
@@ -1484,7 +1452,6 @@ Ex 2:
     action: fill,
     action_text: {state["email"]}
     icon: 28,
-    reason: This question asks for the user's email address, so the email input should be filled with {state["email"]} from the User Profile Section.
 }}
 
 Ex 3:
@@ -1492,14 +1459,12 @@ Ex 3:
     action: fill_with_time,
     action_text: 08/01/2020,
     icon: 35,
-    reason: This question asks for a time, so the time input should be filled with the user's answer.
 }}
 
 Ex 4:
 {{
     action: delete,
     icon: 38,
-    reason: This input contains incorrect information and should be cleared with the correct answer in the User Profile Section.
 }}
 
 Ex 5:
@@ -1507,28 +1472,24 @@ Ex 5:
     action: delete_and_fill,
     action_text: {state["first_name"]},
     icon: 42,
-    reason: The current first name is incorrect, so the existing value should be deleted and replaced with {state["first_name"]} due to me checking the User Profile Section.
 }}
 
 Ex 6:
 {{
     action: click,
     icon: 32,
-    reason: This question asks whether the user is a U.S. citizen and Yes due to the User Profile Section.
 }}
 
 Ex 7:
 {{
     action: upload_resume,
     icon: 50,
-    reason: This question requires the user's resume to be uploaded and there is a resume to be uploaded in the User Profile Section.
 }}
 
 Ex 8:
 {{
     action: upload_cover_letter,
     icon: 52,
-    reason: This question requires the user's cover letter to be uploaded and there is a cover letter to be uploaded in the User Profile Section.
 }}
 
 Ex 9:
@@ -1536,7 +1497,6 @@ Ex 9:
     action: click_and_view,
     icon: 22,
     question: Add More Work Experience,
-    reason: The user has one more work experience that needs to be uploaded due to the User Profile Section showing two work experience.
 }}
 
 Ex 10:
@@ -1544,14 +1504,12 @@ Ex 10:
     action: markdown,
     icon: 60,
     current_question: What U.S. State are you in?,
-    reason: This question uses a dropdown with multiple selectable state options. The markdown process should open the element, discover the available options, and determine which option matches the user's information, I answered this through the User Profile Section.
 }}
 
 Ex 11:
 {{
     action: submit,
     icon: 30,
-    reason: This is the Submit, Save and Continue, Continue, or Next button that progresses from the current page or section.
 }}
 
 USER PROFILE:
@@ -1606,12 +1564,6 @@ Cover Letter:
                     {
                         "type": "text",
                         "text": prompt
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{old_bytes}"
-                        }
                     },
                     {
                         "type": "image_url",
