@@ -42,24 +42,28 @@ class FormsAction(TypedDict):
     needs_sister_elements: bool
     needs_parent_elements: bool
     element_done: bool
-    reason: str
+    reason: Annotated[str, "Maximum 5 words."]
 
 class AnswerItem(TypedDict):
     icon: int | str
     answer_type: Literal["fill", "click"]
     answer_text: str
-    reason: str
+    reason: Annotated[str, "Maximum 5 words."]
 
 class FindIcon(TypedDict):
     icon: int
-    icon_reason: str
+    icon_reason: Annotated[str, "Maximum 5 words."]
 
 class QuestionProcess(TypedDict):
-    items: list[dict]
+    items: list[list]
+    add_option: bool | None
+
+class ReviewQuestionProcess(TypedDict):
+    decision: Literal["same_form", "new_form", "different_page"]
+    reason: Annotated[str, "Maximum 5 words."]
 
 class ReviewClickAndViewProcess(TypedDict):
     click_and_view_status: Literal["complete", "more_questions", "incorrect"]
-    reason: str
 
 class SignupProcess(TypedDict):
     input_indexes: list[int] | None
@@ -77,11 +81,10 @@ class SignupProcess(TypedDict):
 
 class ApplyProcess(TypedDict):
     icon: int | None
-    icon_reason: str | None
 
 class DecidePage(TypedDict):
     action: Literal["apply", "signup", "forms", "cookies", "verification", "exit", "wait"]
-    action_reason: str
+    action_reason: Annotated[str, "Maximum 5 words."]
 
 class MultipleQuestionItem(TypedDict):
     label_text: str | None
@@ -111,12 +114,12 @@ class AllElementsGrouping(TypedDict):
 class AllElements(TypedDict):
     custom_grouping: list[AllElementsGrouping]
     follow_through_element: int | None
-    follow_through_reason: str
+    follow_through_reason: Annotated[str, "Maximum 5 words."]
 
 class ClickAction(TypedDict):
     action: Literal["apply", "signup", "error"]
     index_number: int | None
-    reason: str
+    reason: Annotated[str, "Maximum 5 words."]
 
 class CurrentPage(TypedDict):
     page: str | None
@@ -125,16 +128,15 @@ class CurrentPage(TypedDict):
 
 class MiddlePageDecision(TypedDict):
     action: Literal["apply", "signup", "forms", "cookies", "other", "error"]
-    action_reason: str
+    action_reason: Annotated[str, "Maximum 5 words."]
 
 class NewCookiesProcess(TypedDict):
     width: float
     height: float
-    reason: str
+    reason: Annotated[str, "Maximum 5 words."]
 
 class CookiesProcess(TypedDict):
     icon: int | None
-    icon_reason: str | None
 
 class PageAction(TypedDict):
     action: Literal[
@@ -148,7 +150,7 @@ class PageAction(TypedDict):
     ]
     element_index: int | None
     answer: str | None
-    reason: str
+    reason: Annotated[str, "Maximum 5 words."]
 
 class AITokens(TypedDict):
     tracker: int
@@ -172,11 +174,11 @@ class MarkdownProcess(TypedDict):
     options: list[dict]
     option_choice: int
     current_option: int
-    option_reason: str
+    option_reason: Annotated[str, "Maximum 5 words."]
 
 class ReviewMarkdownProcess(TypedDict):
     markdown_status: Literal["correct", "incorrect_and_box_open", "incorrect_and_box_closed", "more_markdown", "more_questions"]
-    reason: str
+    reason: Annotated[str, "Maximum 5 words."]
 
 class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────
@@ -226,11 +228,14 @@ class ApplicationState(TypedDict):
 
     # ── Routing ────────────────────────────────────
     current_page: CurrentPage
-    retry_count: int
+    browser: str
+    context: str
+    leaving_reason: str
 
     # ── Date ────────────────────────────────────
     date: str
 
+    submit_element: dict
     work_experience: list[dict]
     education: list[dict]
     element_action: FormsAction
@@ -265,8 +270,22 @@ class ApplicationState(TypedDict):
     # ── Token / Cost Tracking ──────────────────────
     token_usage: AITokens
 
+    # Wait
+    wait_action: str
+
     # AI action
     action: str
+    signup_action: str
+
+    # submit 
+    submit_element: dict | None
+    temporary_submit_element: dict | None
+
+    # click and view index
+    click_and_view_index: int | None
+    click_and_view_elements: list[dict]
+    temporary_click_and_view_index: int | None
+    temporary_click_and_view_elements: list[dict]
 
     # ── Messages ───────────────────────────────────
     messages: Annotated[list[AnyMessage], add_messages]

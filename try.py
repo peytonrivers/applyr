@@ -3,7 +3,7 @@ import json
 import psutil
 import tracemalloc
 
-memory = psutil.virtual_memory()
+"""memory = psutil.virtual_memory()
 cpu_usage = psutil.cpu_percent(interval=1)
 
 tracemalloc.start()
@@ -21,4 +21,9 @@ def math_process(a: int, b: int):
     d = a * b
     return c,d
 
-print(math_process(2, 4))
+print(math_process(2, 4))"""
+
+my_data = {"first": "peyton", "last": "rivers"}
+for key, value in my_data.items():
+    print(f"key: {key}")
+    print(f"value: {value}")

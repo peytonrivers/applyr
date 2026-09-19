@@ -14,7 +14,6 @@ from PIL import Image
 from state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, QuestionProcess
 
 from langchain_openai import ChatOpenAI
-from langchain_ollama import ChatOllama
 
 
 import time
@@ -23,13 +22,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 url = "https://practice.expandtesting.com/dropdown"
+url = "https://www.w3schools.com/html/tryit.asp?filename=tryhtml_editors"
 
 
 
-ollama_llm = ChatOllama(model="qwen3.5:9b", temperature=0.1)
-
-response = ollama_llm.invoke("Who was the first president of the united states?")
-print(response)
 
 """with Stealth().use_sync(sync_playwright()) as p:
     browser = p.chromium.launch(headless=False)
@@ -205,3 +201,12 @@ def execute_action(current_answer: dict, current_box: dict, state: ApplicationSt
     if action == "click":
         page.mouse.click(page_x, page_y)
 
+with Stealth().use_sync(sync_playwright()) as p:
+    browser = p.chromium.launch(headless=False)
+    page = browser.new_page()
+    page.goto(url)
+    page.wait_for_load_state("load")
+    time.sleep(10)
+    page.locator("#firstName").click()
+    page.keyboard.type("North")
+    time.sleep(2)
