@@ -22,7 +22,7 @@ import json
 import time
 import base64
 from datetime import datetime
-from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess
+from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -31,6 +31,7 @@ import cv2
 import math
 import subprocess
 from database.storage import supabase
+from datetime import date
 
 import pyautogui
 pyautogui.FAILSAFE = False
@@ -55,11 +56,11 @@ meta_key = os.getenv("META_KEY")
 META_MODEL = "Qwen/Qwen3-VL-30B-A3B-Instruct"
 
 MODEL_NAME = "gpt-5.4-nano"
-MODEL_NAME2 = "gpt-5.6-luna"
+MODEL_NAME2 = "gpt-6-luna"
 
 llm = ChatOpenAI(model=MODEL_NAME, temperature=0.3, api_key=openai_key)
-llm2 = ChatOpenAI(model=MODEL_NAME2, temperature=0.1, reasoning_effort="high", api_key=openai_key)
-llm3 = ChatOpenAI(model=MODEL_NAME2, temperature=0.1, api_key=openai_key)
+llm2 = ChatOpenAI(model=MODEL_NAME2, reasoning_effort="high", api_key=openai_key)
+llm3 = ChatOpenAI(model=MODEL_NAME2, api_key=openai_key)
 
 structured_llm = llm.with_structured_output(ClickAction, include_raw=True)
 multiple_question_llm = llm.with_structured_output(MultipleQuestion, include_raw=True)
@@ -73,25 +74,27 @@ forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
 question_process_llm2 = llm2.with_structured_output(QuestionProcess, include_raw=True)
 review_question_process_llm3 = llm3.with_structured_output(ReviewQuestionProcess, include_raw=True)
 markdown_process_llm2 = llm2.with_structured_output(MarkdownProcess, include_raw=True)
-review_markdown_process_llm3 = llm3.with_structured_output(ReviewMarkdownProcess, include_raw=True)
+review_markdown_process_llm2 = llm2.with_structured_output(ReviewMarkdownProcess, include_raw=True)
+complete_markdown_process_llm2 = llm2.with_structured_output(CompleteMarkdownProcess, include_raw=True)
 review_click_and_view_process_llm3 = llm3.with_structured_output(ReviewClickAndViewProcess, include_raw=True)
 find_icon_process_llm3 = llm3.with_structured_output(FindIcon, include_raw=True)
-url = "https://jobs.fidelity.com/en/jobs/2132114/leap-software-engineer/"
-url = "https://www.allstate.jobs/job/23527822/senior-product-engineer-software-java-/"
-# url = "https://www.allstate.jobs/job/23283268/-net-senior-software-engineer/"
-url = "https://www.allstate.jobs/job/23473343/cloud-services-lead-software-engineer/"
-url = "https://www.allstate.jobs/job/23613565/java-development-lead-systems-engineer/"
-url = "https://cloudfront.careeronestop.org/JusticeImpacted/Toolkit/practice-job-application-form.aspx?practice-job-application-form.aspx="
-url = "https://www.allstate.jobs/job/23660063/senior-consultant-ii-ai-ml-engineer/"
+search_process_llm2 = llm2.with_structured_output(SearchProcess, include_raw=True)
+review_search_process_llm2 = llm2.with_structured_output(ReviewSearchProcess, include_raw=True)
+complete_search_process_llm2 = llm2.with_structured_output(CompleteSearchProcess, include_raw=True)
+text_time_process_llm2 = llm2.with_structured_output(TextTimeProcess, include_raw=True)
+review_time_process_llm2 = llm2.with_structured_output(ReviewTimeProcess, include_raw=True)
+calendar_time_process_llm2 = llm2.with_structured_output(CalendarTimeProcess, include_raw=True)
+
+url = "https://www.allstate.jobs/job/23890328/software-engineering-manager-java-/"
+url = "https://testing-kohl-psi.vercel.app/"
 print(url.title)
-input_cost = 0.20 / 1000000
-output_cost = 1.25 / 1000000
-cached_cost = 0.02 / 1000000
-model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000]]
+model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000], ["gpt-6-luna", 0.10 / 1000000, 0.50 / 1000000, 0.01 / 1000000]]
 
 
 def ai_token_tracker(new_tokens: dict, model_name: str, state: ApplicationState):
     token_check = False
+
+
     for i in range(len(model_ratios)):
         current_model = model_ratios[i]
         current_model_name = current_model[0]
@@ -111,19 +114,24 @@ def ai_token_tracker(new_tokens: dict, model_name: str, state: ApplicationState)
     total_cost = token_usage["total_cost"]
     new_input_tokens = new_tokens["input_tokens"]
     new_cached_tokens = new_tokens["input_token_details"]["cache_read"]
+    new_cached_tokens_cost = new_cached_tokens * cached_cost
     print(f"new input token details: {new_tokens["input_token_details"]}")
     print(f"new cached tokens: {new_cached_tokens}")
     after_new_input_tokens = new_input_tokens - new_cached_tokens
+    new_input_token_cost = after_new_input_tokens * input_cost
     print(new_input_tokens)
     new_output_tokens = new_tokens["output_tokens"]
-    print(new_output_tokens)
+    print(f"new output tokens: {new_output_tokens}")
+    new_output_tokens_cost = new_output_tokens * output_cost
+    new_total_cost = new_cached_tokens_cost + new_input_token_cost + new_output_tokens_cost
+    print(f"Current iteration cost: ${new_total_cost}")
     input_tokens += after_new_input_tokens
     print(f"Total input tokens: {input_tokens}")
     cached_tokens += new_cached_tokens
     print(f"Total cached tokens: {cached_tokens}")
     output_tokens += new_output_tokens
     print(f"Total output tokens: {output_tokens}")
-    total = (input_tokens * input_cost) + (cached_tokens * cached_cost) +(output_tokens * output_cost)
+    total = total_cost + new_total_cost
     state["token_usage"] = {
         "tracker": tracker,
          "input_tokens": input_tokens,
@@ -135,6 +143,7 @@ def ai_token_tracker(new_tokens: dict, model_name: str, state: ApplicationState)
     return state
 
 def details_process(details: dict):
+    print(f"details: {details}")
     new_tokens = details.usage_metadata
     response_metadata = details.response_metadata
     total_model_name = response_metadata["model_name"]
@@ -150,6 +159,7 @@ def details_process(details: dict):
         model_name += letter
     print(f"model: {model_name}")
     return new_tokens, model_name  
+
 
 def empty_pixel_process(encoded_bytes: str, coordinates: list[list], full_page_width: int, full_page_height: int):
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
@@ -264,6 +274,7 @@ def page_width_and_height_process(state: ApplicationState):
     real_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight )}""")
     print(f"image width: {i}")
     print(f"image height: {real_height}")
+    page.set_viewport_size({"width": 1300, "height": real_height})
     return 1300, real_height
 
 def page_loaded(state: ApplicationState):
@@ -288,7 +299,6 @@ def screenshot_process(state: ApplicationState):
 def omniparser_process(state: ApplicationState):
     page = state["current_page"]["page"]
     full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
-    print(f"full page height before omniparser: {full_page_height}")
     encoded_bytes, full_page_width, full_page_height = screenshot_process(state)
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
@@ -338,6 +348,9 @@ def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
 
 
 def decide_page(state: ApplicationState):
+    context = state["context"]
+    print(f"context: {context}")
+    print(f"context pages: {context.pages}")
     encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
     do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
@@ -755,24 +768,26 @@ def answser_question_process(state: ApplicationState):
     body_text = " ".join(full_text.split()[:100])
     all_text = [body_text]
 
+    previous_answers = []
+
     for attempt in range(5):
         encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
         encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
         encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
         encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
-        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-        buffer = io.BytesIO(decoded_bytes)
+        decoded_bytes2 = base64.b64decode(encoded_bytes2.encode("utf-8"))
+        buffer = io.BytesIO(decoded_bytes2)
         image = Image.open(buffer)
-        image.show()
-        time.sleep(2)
-        new_box = []
+        page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
             icon = current_box["icon"]
+            bbox = current_box["bbox"]
+            coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
             box_type = current_box["type"]
             content = current_box["content"]
-            new_box.append([icon, box_type, content])
-        all_boxes.append(new_box)
+            page_elements.append([icon, box_type, coordinates, content])
+    
         coordinates = []
         for coord in range(len(boxes_details)):
             current_box = boxes_details[coord]
@@ -782,6 +797,8 @@ def answser_question_process(state: ApplicationState):
         
         prompt = f"""
 You are completing a job application form using the user's profile and the visible page.
+You need to look at the images to think logically on how to answer the questions and deal with errors.
+
 
 GOAL
 - Correctly answer every required question.
@@ -794,10 +811,10 @@ GOAL
 ACTIONS
 skip: No change needed or question should be skipped.
 fill: Fill an empty input. Requires action_text + icon.
-fill_with_time: Fill a date/time input. Requires action_text + icon.
+time: Any question that has anything to due with time. Requires icon + current_question. Never click the calendar icon but always choose the text icon instead.
 delete: Clear incorrect/unwanted text. Requires icon.
-delete_and_fill: Replace existing text. Requires action_text + icon.
 click: Select/unselect an immediately answerable option. Requires icon.
+search: When you need to search something or enter skills that could possibly add suggested drop downs, search texts must always be one word.
 upload_resume: Resume upload field. Requires icon.
 upload_cover_letter: Cover-letter upload field. Requires icon.
 click_and_view: Click only when it reveals additional fields/questions that must be completed. Requires icon + question.
@@ -811,12 +828,13 @@ IMPORTANT
 - Submit only after required visible questions are correctly handled.
 - Do not list any elements you skip.
 - Use delete or delete and fill if one of the inputted answers is incorrect.
+- You need to look at the images to think logically on how to answer the questions and deal with errors.
 
 Page Elements format
-[icon, type, content]
+[icon, type, coordinates, content text]
 
 PAGE ELEMENTS
-{new_box}
+{page_elements}
 
 ITEMS ELEMENTS
 
@@ -824,13 +842,13 @@ skip: [action]
 
 fill: [action, icon, action_text]
 
-fill_with_time: [action, icon, action_text]
-
 delete: [action, icon]
 
-delete_and_fill: [action, icon, action_text]
-
 click: [action, icon]
+
+time: [action, icon, current_question]
+
+search: [action, icon, current_question, list of text]
 
 upload_resume: [action, icon]
 
@@ -846,7 +864,12 @@ ACTIONS
 
 Example:
 
-items: [["skip"], ["fill", 28, {state["email"]}], ["fill_with_time", 35, "08/01/2020"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["upload_resume", 50], ["upload_cover_letter", 52], ["click_and_view", 22, "Add More Work Experience"], ["markdown", 60, "What U.S. State are you in?"], ["submit", 30]]
+items: [["skip"], ["fill", 28, {state["email"]}], ["fill_with_time", 35, "08/01/2020"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["search", ["python", "playwright", "java"]], ["search", 8, "What skills do you have", ["skill 1", "skill 2", "skill 3"]], ["upload_resume", 50], ["upload_cover_letter", 52], ["click_and_view", 22, "Add More Work Experience"], ["markdown", 60, "What U.S. State are you in?"], ["submit", 30]]
+error: yes there was an error on checking a box and I handled it by clicking a box to fix it.
+
+
+PREVIOUS ANSWERS TO HELP WITH ERROR HANDLING
+[{previous_answers}]
 
 USER PROFILE
 Account:
@@ -916,111 +939,13 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             state["leaving_reason"] = f"The cost extended above $0.10 at the signup page process with the total being ${total_cost}"
         answers = response["parsed"]
         ai_answers = answers["items"]
+        previous_answers.append(ai_answers)
         print(f"AI Answers: {ai_answers}")
-        """submit_index = None
-        click_and_view_elements = []
-        click_and_view_index = 0
-        state["click_and_view_index"] = click_and_view_index
-        for i in range(len(ai_answers)):
-            current_answer = ai_answers[i]
-            action = current_answer[0]
-            if action == "click_and_view":
-                current_click = []
-                current_click.append(current_answer)
-                current_click_icon = current_answer[1] if len(current_answer) > 1 else None
-                if not current_click_icon:
-                    current_click.append({"icon_status": None})
-                    click_and_view_elements.append(current_click)
-                    continue
-                coordinates = boxes_details[current_click_icon]["bbox"]
-                page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
-                page.mouse.click(page_x, page_y, button="right")
-                current_click_element = page.evaluate(
-                            () => {
-                                const el = document.activeElement;
-                                const box = el.getBoundingClientRect();
-                
-                                return {
-                                    tag: el.tagName.toLowerCase(),
-                
-                                    attributes: Object.fromEntries(
-                                        Array.from(el.attributes).map(attr => [
-                                            attr.name,
-                                            attr.value
-                                        ])
-                                    ),
-                
-                                    text: el.innerText,
-                
-                                    bounding_box: {
-                                        x: box.x,
-                                        y: box.y,
-                                        width: box.width,
-                                        height: box.height
-                                    },
-                
-                                    center: {
-                                        x: box.x + box.width / 2,
-                                        y: box.y + box.height / 2
-                                    }
-                                };
-                            }
-                        )
-                current_click_element["icon_status"] = True
-                current_click.append(current_click_element)
-                click_and_view_elements.append(current_click)
-                page.mouse.click(white_x, white_y)
-            
-            if action == "submit":
-                submit_index = i
-                submit_icon = current_answer[1] if len(current_answer) > 1 else None
-                if not submit_icon:
-                    continue
-                coordinates = boxes_details[submit_icon]["bbox"]
-                page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
-                page.mouse.click(page_x, page_y, button="right")
-                submit_element = page.evaluate(
-                            () => {
-                                const el = document.activeElement;
-                                const box = el.getBoundingClientRect();
-                
-                                return {
-                                    tag: el.tagName.toLowerCase(),
-                
-                                    attributes: Object.fromEntries(
-                                        Array.from(el.attributes).map(attr => [
-                                            attr.name,
-                                            attr.value
-                                        ])
-                                    ),
-                
-                                    text: el.innerText,
-                
-                                    bounding_box: {
-                                        x: box.x,
-                                        y: box.y,
-                                        width: box.width,
-                                        height: box.height
-                                    },
-                
-                                    center: {
-                                        x: box.x + box.width / 2,
-                                        y: box.y + box.height / 2
-                                    }
-                                };
-                            }
-                        )
-                state["submit_element"] = submit_element
-                page.mouse.click(white_x, white_y)
-        if submit_index == None:
-            state["submit_element"] = None
-        if len(click_and_view_elements) == 0:
-            state["click_and_view_elements"] = []
-        else:
-            state["click_and_view_elements"] = click_and_view_elements
-        print(f"Click and view elements in state answer question: {state.get("click_and_view_elements")}")"""
-        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, white_x=white_x, white_y=white_y)
+        context = state.get("context")
+        page_count = len(context.pages)
+        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, white_x=white_x, white_y=white_y, page_count=page_count)
         state, decision = review_answer_question_process(state=state, all_text=all_text)
+        del all_text[-1]
         if decision == "same_form":
             continue
         elif decision == "new_form":
@@ -1045,6 +970,8 @@ def review_answer_question_process(state: ApplicationState, all_text: list[str])
 
     body_text = " ".join(full_text.split()[:100])
     all_text.append(body_text)
+    print(f"all text: {all_text}")
+    print(f"all text count: {len(all_text)}")
     prompt = f"""
 Your an AI Applicant helper and your job is to look at the two different lists of body text and determine.
 1. same_form - all the body text look similar.
@@ -1055,13 +982,13 @@ All text:
 {all_text}
 
 Ex 1:
-{{decision: same_form, reason: There is an error and the ai answers look similar to the current page}}
+{{decision: same_form}}
 
 Ex 2:
-{{decision: new_form, reason: This a new form page where it is different to the old forms questions}}
+{{decision: new_form}}
 
 Ex 3:
-{{decision: different_page, reason: This is not a forms page}}
+{{decision: different_page}}
 """
     response = review_question_process_llm3.invoke([
         {
@@ -1079,13 +1006,24 @@ Ex 3:
     if total_cost > 0.10:
         state["action"] = "exit"
         state["leaving_reason"] = f"The cost extended above $0.10 at the review signup page process with the total being ${total_cost}"
+
     answers = response["parsed"]
     print(f"Review Answers: {answers}")
     decision = answers["decision"]
     return state, decision
 
-def action_process(ai_answers: list[dict], boxes_details: list[dict], state: ApplicationState, full_page_width: int, full_page_height: int, white_x=None, white_y=None, process=None):
-    ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "fill_with_time": 2, "delete": 3, "delete_and_fill": 4, "click": 5, "upload_resume": 6, "upload_cover_letter": 7, "markdown": 8, "click_and_view": 9, "submit": 10}.get(x[0].lower(), 999))
+def action_process(ai_answers: list[list], boxes_details: list[dict], state: ApplicationState, full_page_width: int, full_page_height: int, white_x=None, white_y=None, process=None, page_count=None):
+    ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "delete": 2, "click": 3, "time": 4, "search": 5, "upload_resume": 6, "upload_cover_letter": 7, "markdown": 8, "click_and_view": 9, "add_more": 10, "submit": 11}.get(x[0].lower(), 999))
+    click_and_view_count = 0
+    print(f"ai answers: {ai_answers}")
+    for l in range(len(ai_answers)):
+        current_answer = ai_answers[l]
+        print(f"current answer: {current_answer}")
+        action = current_answer[0] if len(current_answer) > 0 else None
+        if action == "click_and_view":
+            click_and_view_count += 1
+    state["click_and_view_count"] = click_and_view_count
+    state["current_click_and_view_count"] = 0
     for i in range(len(ai_answers)):
         current_answer = ai_answers[i]
         action = current_answer[0] if len(current_answer ) > 0 else None
@@ -1094,29 +1032,38 @@ def action_process(ai_answers: list[dict], boxes_details: list[dict], state: App
         icon = current_answer[1] if len(current_answer ) > 1 else None
         if not icon:
             continue
-        current_box = boxes_details[icon]
-        state = execute_action(current_answer=current_answer, current_box=current_box, state=state, full_page_width=full_page_width, full_page_height=full_page_height, white_x=white_x, white_y=white_y, process=process)
+        if type(icon) == int and icon >= 0:
+            current_box = boxes_details[icon]
+        else:
+            current_box = -1
+        state = execute_action(current_answer=current_answer, current_box=current_box, state=state, full_page_width=full_page_width, full_page_height=full_page_height, white_x=white_x, white_y=white_y, process=process, click_and_view_count=click_and_view_count, page_count=page_count)
     return state
 
 def find_icon(current_answer: dict, state: ApplicationState):
     page = state["current_page"]["page"]
     encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
-    new_box = []
+    page_elements = []
     for i in range(len(boxes_details)):
         current_box = boxes_details[i]
+        icon = current_box["icon"]
         box_type = current_box["type"]
-        bbox = current_box["content"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4),]
         content = current_box["content"]
-        new_box.append([box_type, bbox, content])
+        page_elements.append([icon, box_type, coordinates, content])
     prompt = f"""
 You are an AI Applicant helper and will be helping us find the icon from the current_answer.
 Look at the boxes_details to determine the icon we will be clicking.
 
+Often times you will be in the forms process so looking at the the action type will help you determine what element we are looking for, think logically to find the icon we are looking for.
 
 current_answer: {current_answer}
 
-boxes_details: {new_box}
+PAGE ELEMENTS FORMAT
+[icon, type, coordinates, content]
+
+Page elements: {page_elements}
 
 Example output:
 {{
@@ -1150,84 +1097,158 @@ icon: 48
     page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
     return encoded_bytes, page_x, page_y, state
 
-def execute_action(current_answer: list, current_box: dict, full_page_width: int, full_page_height: int, state: ApplicationState, white_x=None, white_y=None, process=None):
+def execute_action(current_answer: list, current_box: dict, full_page_width: int, full_page_height: int, page_count: int, state: ApplicationState, white_x=None, white_y=None, process=None, click_and_view_count=None, ai_answers=None):
     page = state["current_page"]["page"]
+    context = state.get("context")
     action = current_answer[0] if len(current_answer ) > 0 else None
     if not action or action == "skip":
         return state
-    icon = current_answer[1] if len(current_answer ) > 1 else None
-    if not icon or not isinstance(icon, int):
-        return state
-    coordinates = current_box.get("bbox")
-    if not coordinates:
-        return state
-    page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+    if action != "arrow":
+        icon = current_answer[1] if len(current_answer ) > 1 else None
+        if not icon or not isinstance(icon, int):
+            return state
+        if icon >= 0:
+            coordinates = current_box.get("bbox")
+            page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+    context = state.get("context")
+
     if action == "fill":
         action_text = current_answer[2] if len(current_answer ) > 2 else None
         if not action_text:
-            return state
-        page.mouse.click(page_x, page_y)
-        time.sleep(0.1)
-        page.keyboard.type(action_text)
-        time.sleep(0.1)
-        page.keyboard.press("Enter")
-        time.sleep(0.1)
-        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
-            page.mouse.click(white_x, white_y)
-            time.sleep(1)
-        return state
-    if action == "delete":
-        page.mouse.click(page_x, page_y)
-        time.sleep(1)
-        for i in range(500):
-            page.keyboard.press("ArrowRight")
-        for i in range(500):
+            action_text = ""
+        for i in range(1000):
             page.keyboard.press("Backspace")
-    if action == "delete_and_fill":
-        action_text = current_answer[2] if len(current_answer ) > 2 else None
-        if not action_text:
-            return state
         page.mouse.click(page_x, page_y)
         time.sleep(0.1)
-        for i in range(500):
-            page.keyboard.press("ArrowRight")
-        for i in range(500):
-            page.keyboard.press("Backspace")
-        page.keyboard.type(action_text)
-        time.sleep(0.1)
-        page.keyboard.press("Enter")
-        time.sleep(0.1)
-        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
-            page.mouse.click(white_x, white_y)
-    if action == "fill_with_time":
-        action_text = current_answer[2] if len(current_answer ) > 2 else None
-        if not action_text:
-            return state
-        page.mouse.click(page_x, page_y)
-        page.keyboard.press("ArrowLeft")
-        time.sleep(0.2)
-        page.keyboard.type(action_text)
-        time.sleep(0.2)
-        page.keyboard.press("Enter")
-        time.sleep(0.2)
-        if white_x and white_y:
-            page.mouse.click(white_x, white_y)
-            time.sleep(1)
-        return state
-    if action == "click":
-        context = page.context
-        page_count = len(context.pages)
-        page.mouse.click(page_x, page_y)
-        time.sleep(1)
-        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
-            page.mouse.click(white_x, white_y)
-            time.sleep(1)
         new_page_count = len(context.pages)
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
-        return state
-    if action == "upload_resume":
+        time.sleep(0.1)
+        page.keyboard.type(action_text)
+        time.sleep(0.1)
+        page.keyboard.press("Enter")
+        time.sleep(0.1)
+        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
+            page.mouse.click(white_x, white_y)
+            time.sleep(1)
+    elif action == "delete":
+        page.mouse.click(page_x, page_y)
+        time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        time.sleep(1)
+        for i in range(500):
+            page.keyboard.press("ArrowRight")
+        for i in range(500):
+            page.keyboard.press("Backspace")
+    elif action == "delete_and_fill":
+        action_text = current_answer[2] if len(current_answer ) > 2 else None
+        if not action_text:
+            action_text = ""
+        page.mouse.click(page_x, page_y)
+        time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        time.sleep(0.1)
+        for i in range(500):
+            page.keyboard.press("ArrowRight")
+        for i in range(500):
+            page.keyboard.press("Backspace")
+        page.keyboard.type(action_text)
+        time.sleep(0.1)
+        page.keyboard.press("Enter")
+
+        time.sleep(0.1)
+
+        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
+            page.mouse.click(white_x, white_y)
+            time.sleep(0.1)
+            new_page_count = len(context.pages)
+            if new_page_count > page_count:
+                all_pages = context.pages
+                all_pages[-1].close()
+    elif action == "white_pixel":
+        pyautogui_image = pyautogui.screenshot(region=(25, 120, full_page_width, 700))
+        buffer = io.BytesIO()
+        pyautogui_image.save(buffer, format="PNG")
+        pyautogui_bytes = buffer.getvalue()
+        encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+        data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        data = response.json()
+        boxes_details = data["boxes_details"]
+        coordinates = []
+        for i in range(len(boxes_details)):
+            current_box = boxes_details[i]
+            coordinate = current_box["bbox"]
+            coordinates.append(coordinate)
+        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, coordinates=coordinates, full_page_width=full_page_width, full_page_height=580)
+        white_x += 25
+        white_y += 120
+        print(f"white x: {white_x}, white y: {white_y}")
+        pyautogui.click(x=white_x, y=white_y)
+        time.sleep(0.1)
+        pyautogui.moveTo(0, 0)
+    elif action == "time":
+        current_question = current_answer[2] if len(current_answer ) > 2 else None
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height != full_page_height:
+            print("used find icon for time")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        page.mouse.click(page_x, page_y)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        state = time_process(current_question=current_question, full_page_width=current_height, page_x=page_x, page_y=page_y, state=state)
+    elif action == "click":
+        page.mouse.click(page_x, page_y)
+        time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
+            page.mouse.click(white_x, white_y)
+            time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+    elif action == "arrow":
+        current_option = current_answer[1]
+        option_choice = current_answer[2]
+        option_difference = option_choice - current_option
+        if option_difference == 0:
+            pyautogui.hotkey("down")
+            pyautogui.hotkey("up")
+            pyautogui.hotkey("enter")
+
+        elif option_difference > 0:
+            for i in range(option_difference):
+                pyautogui.hotkey("down")
+            time.sleep(0.1)
+            pyautogui.hotkey("enter")
+        else:
+            for i in range(abs(option_difference)):
+                pyautogui.hotkey("up")
+            time.sleep(0.1)
+            pyautogui.hotkey("enter")
+    elif action == "exit":
+        page.mouse.click(page_x, page_y)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            page_difference = new_page_count - page_count
+            for i in range(page_difference):
+                all_pages = context.pages
+                all_pages[-1].close()
+
+    elif action == "upload_resume":
         user_id = state.get("user_id")
         print(f"user_id: {user_id}")
         application_path = "/Users/peytonrivers/application"
@@ -1239,12 +1260,19 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         except Exception:
             print("resume bytes did not work")
             return state
-        encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height != full_page_height:
+            print("used find icon for upload resume")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
         if (page_x is not None and page_y is not None and math.isfinite(page_x) and math.isfinite(page_y)):
             with open(full_path, 'wb') as f:
                 f.write(resume_bytes)
-            time.sleep(1)
+            time.sleep(0.1)
             page.mouse.click(page_x, page_y)
+            new_page_count = len(context.pages)
+            if new_page_count > page_count:
+                all_pages = context.pages
+                all_pages[-1].close()
             upload_prompt = 'tell application "Finder" to set target to front window of folder "application" of home'
             run = subprocess.run(["osascript", "-e", ])
             run = subprocess.run(["osascript", "-e", upload_prompt])
@@ -1254,12 +1282,13 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
             time.sleep(1)
             pyautogui.press("right")
             time.sleep(0.5)
+            pyautogui.press("right")
+            time.sleep(0.5)
             pyautogui.press("enter")
-            time.sleep(1)
+            time.sleep(3)
             run = subprocess.run(["rm", full_path], capture_output=True)
 
-        return state
-    if action == "upload_cover_letter":
+    elif action == "upload_cover_letter":
         user_id = state.get("user_id")
         file_path = f"{user_id}/resume/Resume.pdf"
         application_path = "/Users/peytonrivers/application"
@@ -1270,125 +1299,111 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         except Exception:
             print("cover letter bytes did not work")
             return state
-        encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height != full_page_height:
+            print("used find icon for upload cover letter")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
         if (page_x is not None and page_y is not None and math.isfinite(page_x) and math.isfinite(page_y)):
             with open(full_path, 'wb') as f:
                 f.write(resume_bytes)
-            time.sleep(1)
+            time.sleep(0.1)
             page.mouse.click(page_x, page_y)
+            new_page_count = len(context.pages)
+            if new_page_count > page_count:
+                all_pages = context.pages
+                all_pages[-1].close()
             pyautogui.moveTo(x=350, y=400)
             time.sleep(1)
             pyautogui.click()
             pyautogui.press("right")
             time.sleep(0.5)
+            pyautogui.press("right")
+            time.sleep(0.5)
             pyautogui.press("enter")
             time.sleep(1)
             run = subprocess.run(["rm", full_path])
-        return state
-    if action == "markdown":
-        pyautogui_image1 = pyautogui.screenshot(region=(100, 40, 1200, 780))
-        pyautogui_buffer1 = io.BytesIO()
-        pyautogui_image1.save(pyautogui_buffer1, format="PNG")
-        old_pyautogui_bytes1 = pyautogui_buffer1.getvalue()
-        encoded_pyautogui_bytes1 = base64.b64encode(old_pyautogui_bytes1).decode("utf-8")
-
-        screenshot1 = page.screenshot()
-        old_bytes = base64.b64encode(screenshot1).decode("utf-8")
-        time.sleep(1)
+    elif action == "markdown":
         pyautogui.moveTo(0, 0)
-
         time.sleep(1)
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height != full_page_height:
+            print("used find icon for markdown")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
         page.mouse.click(page_x, page_y)
+        time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
         time.sleep(1)
         pyautogui.press("down")
         time.sleep(3)
-        body_text = page.locator("body").inner_text()
-        state = markdown_process(current_answer=current_answer, encoded_pyautogui_bytes1=encoded_pyautogui_bytes1, old_bytes=old_bytes, body_text=body_text, page_x=page_x, page_y=page_y, state=state, white_x=white_x, white_y=white_y)
+        state = markdown_process(current_answer=current_answer, ai_answers=ai_answers, state=state)
         time.sleep(5)
-        return state
-    if action == "click_and_view":
-        screenshot = page.screenshot()
-        old_bytes = base64.b64encode(screenshot).decode("utf-8")
-        """if not process:
-            click_and_view_elements = state.get("click_and_view_elements") 
-            click_and_view_index = state.get("click_and_view_index")
-        if process:
-            print(f"temporary click and view elements: {state.get("temporary_click_and_view_elements")}")
-            click_and_view_elements = state.get("temporary_click_and_view_elements")
-            click_and_view_index = state.get("temporary_click_and_view_index")
-        print(f"click and view elements in execute action: {click_and_view_elements}")
-        print(f"click and vivew index: {click_and_view_index}")
-        if len(click_and_view_elements) > 0:
-            current_element = click_and_view_elements[click_and_view_index]
-            click_and_view_index += 1
-            if not process:
-                state["click_and_view_index"] = click_and_view_index
-            if process:
-                state["temporary_click_and_view_index"] = click_and_view_index
-            current_question = current_element[0]
-            click_details = current_element[1]
-            icon_status = click_details["icon_status"]
-            if icon_status:
-                attributes = click_details["attributes"]
-                tag = click_details["tag"]
-                locator = f"{tag}"
-                for key, value in attributes.items():
-                    locator += f'[{key}="{value}"]'
-                click_element = page.locator(locator).first
-                if click_element.count() > 0:
-                    box = click_element.evaluate((el) => { return el.getBoundingClientRect(); })
-                    middle_x = (box["left"] + box["right"]) / 2
-                    middle_y = (box["top"] + box["bottom"]) / 2
-                    if (middle_x is not None and middle_y is not None and math.isfinite(middle_x) and math.isfinite(middle_y)):
-                        page.mouse.click(middle_x, middle_y)
-                        print("Used locator process for click and view")
-                        state = click_and_view_process(current_answer=current_answer, old_bytes=old_bytes, state=state, white_x=white_x, white_y=white_y)
-                    return state"""
-        encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
-        print("used find icon process for click and view")
-        if (page_x is not None and page_y is not None and math.isfinite(page_x) and math.isfinite(page_y)):
-            page.mouse.click(page_x, page_y)
-        else:
-            return state
-        state = click_and_view_process(current_answer=current_answer, old_bytes=old_bytes, state=state, white_x=white_x, white_y=white_y)
-        time.sleep(1)
-        return state
-    if action == "submit":
-        """if not process:
-            submit_element = state.get("submit_element")
-        if process:
-            submit_element = state.get("temporary_submit_element")
-        if submit_element:
-            submit_tag = submit_element["tag"]
-            attributes = submit_element["attributes"]
-            locator = f"{submit_tag}"
-            for key, value in attributes.items():
-                locator += f'[{key}="{value}"]'
-            submit_button = page.locator(locator).first
-            if submit_button.count() > 0:
-                box = submit_button.evaluate((el) => { return el.getBoundingClientRect(); })
-                middle_x = (box["left"] + box["right"]) / 2
-                middle_y = (box["top"] + box["bottom"]) / 2
-                if (middle_x is not None and middle_y is not None and math.isfinite(middle_x) and math.isfinite(middle_y)):
-                    try:
-                        with page.expect_popup() as new_page:
-                            page.mouse.click(middle_x, middle_y)
-                        new_page = new_page.value
-                        new_page.wait_for_load_state("load")
-                        time.sleep(5)
-                        url = new_page.url
-                        state["current_page"] = {
-                            "page": new_page,
-                            "url": url
-                        }
-                        time.sleep(5)
-                        return state
-                    except Exception:
-                        page.wait_for_load_state("load")
-                        time.sleep(5)
-                        return state"""
-        try:
+    elif action == "click_and_view":
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height == full_page_height:
+            print("height is equal in click and view")
+        if current_height != full_page_height:
+            print("used find icon for click and view")
             encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        page.mouse.click(page_x, page_y)
+        time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        current_click_and_view_count = state.get("current_click_and_view_count")
+        print(f"current click and view count: {current_click_and_view_count}")
+        if current_click_and_view_count:
+            current_click_and_view_count += 1
+        else:
+            current_click_and_view_count = 1
+        state["current_click_and_view_count"] = current_click_and_view_count
+        print(f"new click and view count: {current_click_and_view_count}")
+        if click_and_view_count and click_and_view_count == current_click_and_view_count:
+            print("sending to click and view process")
+            state = click_and_view_process(state=state)
+    elif action == "search":
+        pyautogui.moveTo(0, 0)
+        page.mouse.click(page_x, page_y)
+        current_question = current_answer[2]
+        all_text = current_answer[-1]
+        current_text = all_text[0]
+        for i in range(1000):
+            page.keyboard.press("Backspace")
+        page.keyboard.type(current_text)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        state = search_process(all_text=all_text, current_question=current_question, ai_answers=ai_answers, state=state)
+    elif action == "add_more":
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height != full_page_height:
+            print("used find icon for add more")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        page.mouse.click(page_x, page_y)
+        time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
+            page.mouse.click(white_x, white_y)
+            time.sleep(0.1)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()     
+    elif action == "submit":
+        try:
+            current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.documentElement.scrollHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+            if current_height == full_page_height:
+                print("height is equal in the submit action")
+            if current_height != full_page_height:
+                print("used find icon for submit")
+                encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
             with page.expect_popup() as new_page:
                 page.mouse.click(page_x, page_y)
             new_page = new_page.value
@@ -1404,6 +1419,21 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
             page.wait_for_load_state("domcontentloaded")
             time.sleep(5)
             return state
+    time.sleep(1)
+    print(f"all pages: {context.pages}")
+    new_page_count = len(context.pages)
+    print(f"page count: {page_count}")
+    print(f"new page count: {new_page_count}")
+    delete_count = new_page_count - page_count
+    print(f"delete count: {delete_count}")
+    if delete_count != 0:
+        while new_page_count > page_count:
+            all_pages = context.pages
+            print(f"all pages: {all_pages}")
+            all_pages[-1].close()
+            time.sleep(0.5)
+            print(f"new all pages: {context.pages}")
+            new_page_count = len(context.pages)
     return state
 
 def row_change(matrix_image1, matrix_image2):
@@ -1486,25 +1516,525 @@ def cropped_image_process(encoded_image1: str, encoded_image2: str, process=None
     print("Normal cropped image process")
     return encoded_bytes, boxes_details, encoded_cropped_bytes
 
+def time_process(current_question: str, full_page_width: int, page_x: int, page_y: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    state, desired_date, encoded_pyautogui_bytes = text_time_process(current_question=current_question, full_page_width=full_page_width, state=state)
+    state, text_inputted, image1, image2, complete = review_time_process(current_question=current_question, desired_date=desired_date, encoded_pyautogui_bytes=encoded_pyautogui_bytes, state=state)
+    if complete:
+        return state
+    has_type = False
+    active_element = page.locator(":focus")
+    if active_element.count() == 0:
+        active_element = None
+    else:
+        active_element = active_element.first
+    if active_element:
+        has_type = active_element.get_attribute("type") in ["date", "month"]
+        if has_type:
+            desired_date = datetime.strptime(desired_date, "%m/%d/%Y").strftime("%Y-%m-%d")
+            active_element.fill(desired_date) 
+            state, text_inputted, image1, image2, complete = review_time_process(current_question=current_question, desired_date=desired_date, encoded_pyautogui_bytes=encoded_pyautogui_bytes, state=state)
+    if complete:
+        return state
+    
+    if text_inputted:
+        if not has_type:
+            state, desired_date, do_not_use_bytes = text_time_process(current_question=current_question, full_page_width=full_page_width, state=state)
+            state, text_inputted, image1, image2, complete = review_time_process(current_question=current_question, desired_date=desired_date, encoded_pyautogui_bytes=encoded_pyautogui_bytes, state=state)
+    
+    if image1 and not image2:
+        page.mouse.click(page_x, page_y)
+
+    for attempt in range(4):
+        state, complete = calendar_time_process(current_question=current_question, desired_date=desired_date, image1=image1, image2=image2, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
+        if complete:
+            return state
+    
+    return state
+
+def text_time_process(current_question: str, full_page_width: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 780))
+    buffer = io.BytesIO()
+    pyautogui_image.save(buffer, format="PNG")
+    pyautogui_bytes = buffer.getvalue()
+    encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    data = response.json()
+    encoded_pyautogui_bytes = data["encoded_bytes"]
+    boxes_details = data["boxes_details"]
+    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    """decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    image.show()"""
+
+    prompt = f"""
+You're an AI Applicant in the Fill time with text process.
+
+Steps to Fill out the time process
+
+current question: {current_question}
+
+Fill current question: {current_question} Time Process.
+1. Find the Current Question we are on and only look at the current question.
+2. Find what position we are highlighted in the current question.
+3. Look at the highlighted text within the current question and determine how many moves left we need to be to be at the left-most position in the time text.
+4. Answer the current question by using the USER PROFILE
+
+Response Template
+- action: This tells us what action we are going to use to fill this text
+- left_arrow: This tells us how many arrows left we need to move to be at the left most postion
+- text: This is the exact text we will enter to answer the current question by looking at the USER PROFILE.
+
+Example output 1
+
+{{
+    "action": "fill",
+    "left_arrow": 2,
+    "text": "08/21/2026"
+
+We need to move two positions left to be at the left most position. I answered the current question with the user profile and entered the text in the format the current question wants us to give us in.
+}}
+
+Example output 2
+
+{{
+    "action": "fill",
+    "left_arrow": 0,
+    "text": "09/2026"
+
+We are currently at the left most position so we need to move 0 spots left. I answered the question exactly with the text that needed to be inputted in the format of the response guidance.
+}}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+last_name={state["last_name"]}
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+    response = text_time_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answers = response["parsed"]
+    print(f"time text answers: {answers}")
+    action = answers.get("action")
+    left_arrow = answers.get("left_arrow")
+    text = answers.get("text")
+    if action:
+        for i in range(left_arrow):
+            pyautogui.hotkey("left")
+        page.keyboard.type(text)
+    desired_date = text
+    return state, desired_date, encoded_pyautogui_bytes
+
+def review_time_process(current_question: str, desired_date: str, encoded_pyautogui_bytes: str, state: ApplicationState):
+    encoded_bytes, boxes_details, full_page_width, full_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    prompt = f"""
+You're an AI Applicant helper in the Review Time Process.
+
+You will only be looking at the current question during this process.
+
+Current Question: {current_question}
+
+We will be trying to get the desired date within the respective question response format.
+
+Desired Date: {desired_date}
+
+You will answer this question by following the Review Time Process.
+
+Review Time Process.
+1. Your first step is to find the current question {current_question}, and you will only be looking at the current question.
+2. Next Determine if there is text inputted in the current question.
+- If no text has been inputted then determine if image 1, image 2, both, or neither have the calendar popup in the image.
+- Based on which images have or don't have a calendar popup in them we will return something like this.
+- Ex: {{"text_inputted": False, "image1": True, "image2": False, "complete": False}}
+3. If there is text inputted and it is correct then you will return this.
+- {{"text_inputted": True, "complete": True}}
+4. If there is text inputted and it is not correct you will return something like this.
+- {{"text_inputted": True, "complete": False}}
+
+Example output 1
+{{
+"text_inputted": True,
+"complete": True
+
+On the current question there is text inputted and the text inputted is correct.
+}}
+
+Example 2
+{{
+"text_inputted": True,
+"complete": False
+
+There is text inputted but the text inputted is not correct.
+}}
+
+Example 3
+{{
+"text_inputted": False,
+"image1": False,
+"image2": False,
+"complete": False
+
+There is no text inputted and both images do not show a calendar popup.
+}}
+
+Example 4
+{{
+"text_inputted": False,
+"image1": True,
+"image2": False,
+"complete": False
+
+There is no text inputted and image 1 shows a calendar popup but not image 2.
+}}
+
+Example 5
+{{
+"text_inputted": False,
+"image1": False,
+"image2": True,
+"complete": False
+
+There is no text inputted and image 2 shows a calendar popup but image 1 does not show a calendar popup.
+}}
+
+Example 6
+{{
+"text_inputted": False,
+"image1": True,
+"image2": True,
+"complete": False
+
+There is no text inputted and both images show a calendar popup.
+}}
+"""
+    response = review_time_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_pyautogui_bytes}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"review time process answer: {answer}")
+    text_inputted = answer.get("text_inputted")
+    image1 = answer.get("image1")
+    image2 = answer.get("image2")
+    complete = answer.get("complete")
+    return state, text_inputted, image1, image2, complete
+
+def day_calculator(current_day: int, current_month: int, current_year: int, desired_day: int, desired_month: int, desired_year: int):
+    current_date = date(current_year, current_month, current_day)
+    desired_date = date(desired_year, desired_month, desired_day)
+
+    return (desired_date - current_date).days
+
+def calendar_time_process(current_question: str, desired_date: str, image1: bool, image2: bool, full_page_width: int, page_x: int, page_y: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    if image2:
+        encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    else:
+        pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 780))
+        buffer = io.BytesIO()
+        pyautogui_image.save(buffer, format="PNG")
+        pyautogui_bytes = buffer.getvalue()
+        encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+        data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        data = response.json()
+        encoded_bytes = data["encoded_bytes"]
+        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        buffer = io.BytesIO(decoded_bytes)
+        image = Image.open(buffer)
+        boxes_details = data["boxes_details"]
+        encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+        
+
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, content])
+    prompt = f"""
+You're an AI Applicant helper in the Calendar Time Process.
+
+You will only be looking at the current question: {current_question}
+
+We will try to be getting the desired output in the calendar: {desired_date}
+
+If you do not see a calendar in the image immediately stop and return
+{{"action": None, "complete": False}}
+
+You will follow the Calendar Time Process to Answer the Question
+
+Calendar Time Process
+1. Find the Calendar in the image
+2. Find and mark the current date on the calendar, look at the month, the year, and the highlighted day if present to determine the current day. This is extremely important to know the Current date.
+    - Ex: "08/12/2029"
+    - Ex: "09/2025"
+3. Next look at the desired_date: {desired_date}
+4. If the calendar is in month Format, meaning that it shows all the months of the year follow this.
+    - Determine if our current year matches the desired year.
+    - If our current year does not match the desired year, look at the calendar and find the icon that will move us forward or backward to that desired year
+    - Return something like this {{"action": click_month, "icon": 45, "desired_month": 5, "current_month": 4, current_year: 1998, desired_year: 2052}}
+    - If our current year matches the desired year, then find the icon that will click the month to get us to that desired month.
+    - Return something like this {{"action": click_month, "icon": 45, "desired_month": 10, "current_month": 2, current_year: 2002, desired_year: 2002}}
+5. If the calendar is in day Format, meaning it shows the days of the month follow this.
+    - Return the current day, month, year we are currently at in the calendar popup. Return our desired day, month, year we want to be at
+    - Ex: {{"action": arrow_day, "current_day": 15, desired_day: 30, current_month: 2, desired_month: 11, current_year: 2007, desired_year: 2026}}
+
+Actions Format
+None: this is when you don't see any calendar popup which causes us to click the calendar again.
+click_month: you use this action when you see all the months of the year.
+arrow_day: You use this action when you see the days on the calendar.
+
+PAGE ELEMENTS FORMAT
+[icon, type, coordinates, content]
+
+Page Elements: {page_elements}
+
+Example output 1
+{{
+"action": None,
+"complete": False
+
+I saw no calendar pop up in the image so I returned the output no action
+}}
+
+Example output 2
+{{
+"action": "arrow_day",
+"current_day": 30,
+"desired_day": 12,
+"current_month": 8
+"desired_month": 12
+"current_year": 1997
+"desired_year": 2048
+"complete": False
+
+The calendar shows days with the current day being August 8th 1997 and we are trying to get to the desired date of December 12th 2048.
+}}
+
+Example output 3
+{{
+"action": "click_month",
+icon: 94,
+"current_month": 8
+"desired_month": 2
+"current_year": 2028,
+"desired_year": 2025
+
+The calendar shows all the months of the year. We need to click the backward arrow to get to the desired year.
+}}
+
+Example output 4
+{{
+"action": "click_month",
+icon: 112,
+"current_month": 8
+"desired_month": 2
+"current_year": 2025
+"desired_year": 2025
+
+The current year and the desired year are the same. We need to click february to get to our desired month.
+}}
+
+Example output 5
+{{
+"action": "white_pixel",
+"icon": -1,
+"complete": True
+
+The desired date matches the current date so we choose the white_pixel action which always uses the -1 icon.
+}}
+"""
+    response = calendar_time_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    action = answer.get("action")
+    icon = answer.get("icon")
+    current_day = answer.get("current_day")
+    current_month = answer.get("current_month")
+    current_year = answer.get("current_year")
+    desired_day = answer.get("desired_day")
+    desired_month = answer.get("desired_month")
+    desired_year = answer.get("desired_year")
+    complete = answer.get("complete")
+    print(f"calendar time answer: {answer}")
+    if action:
+        state = calendar_action_process(action=action, icon=icon, current_day=current_day, current_month=current_month, current_year=current_year, desired_day=desired_day, desired_month=desired_month, desired_year=desired_year, boxes_details=boxes_details, image2=image2, full_page_width=full_page_width, state=state)
+    return state, complete
+
+def calendar_action_process(boxes_details: list[dict], full_page_width: int, image2: bool, state: ApplicationState, action=None, icon=None, current_day=None, current_month=None, current_year=None, desired_day=None, desired_month=None, desired_year=None):
+    page = state["current_page"]["page"]
+    context = state.get("context")
+    page_count = len(context.pages)
+    if action == "click_month":
+        current_box = boxes_details[icon]
+        coordinates = current_box["bbox"]
+        if image2:
+            full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+            page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+        else:
+            page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=740)
+            page_x += 10
+            page_y += 70
+    if action == "white_pixel":
+        current_answer = [action, -1]
+        full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+        state = execute_action(current_answer=current_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    elif action == "click_month":
+        years_apart = desired_year - current_year
+        if years_apart != 0:
+            if image2:
+                for i in range(abs(years_apart)):
+                    pyautogui.click(page_x, page_y)
+            else:
+                for i in range(abs(years_apart)):
+                    page.mouse.click(page_x, page_y)
+        else:
+            if image2:
+                pyautogui.click(page_x, page_y)
+            else:
+                page.mouse.click(page_x, page_y)
+    elif action == "arrow_day":
+        days_apart = day_calculator(current_day=current_day, current_month=current_month, current_year=current_year, desired_day=desired_day, desired_month=desired_month, desired_year=desired_year)
+        if days_apart > 0:
+            for i in range(days_apart):
+                pyautogui.hotkey("right")
+        elif days_apart < 0:
+            for i in range(abs(days_apart)):
+                pyautogui.hotkey("left")
+    elif action == "arrow_month":
+        total_click = (desired_year - current_year) * 12
+        if total_click > 0:
+            total_click += (desired_month - current_month)
+        elif total_click == 0:
+            total_click += abs(desired_month - current_month)
+        else:
+            total_click = abs(total_click)
+            total_click += (current_month - desired_month)
+        if image2:
+            for i in range(total_click):
+                page.mouse.click(page_x, page_y)
+        else:  
+            for i in range(total_click):
+                pyautogui.click(page_x, page_y)
+    elif action == "arrow_year":
+        total_click = abs(desired_year - current_year)
+        if image2:
+            for i in range(total_click):
+                page.mouse.click(page_x, page_y)
+        else:
+            for i in range(total_click):
+                pyautogui.click(page_x, page_y)
+            
+
+    return state
+
 def markdown_process(current_answer: dict, encoded_pyautogui_bytes1: str, old_bytes: str, body_text: str, page_x: float, page_y: float, state: ApplicationState, white_x=None, white_y=None):
     page = state["current_page"]["page"]
 
-    for attempt in range(5):
-        pyautogui_image2 = pyautogui.screenshot(region=(100, 40, 1200, 780))
+    for attempt in range(3):
+        real_width, real_height = page_width_and_height_process(state=state)
+        print(f"real width: {real_width}")
+        pyautogui_width = real_width
+        pyautogui_image2 = pyautogui.screenshot(region=(10, 40, real_width, 780))
+        pyautogui_image2.show()
         pyautogui_buffer2 = io.BytesIO()
         pyautogui_image2.save(pyautogui_buffer2, format="PNG")
         pyautogui_bytes2 = pyautogui_buffer2.getvalue()
         encoded_pyautogui_bytes2 = base64.b64encode(pyautogui_bytes2).decode("utf-8")
 
-        screenshot = page.screenshot()
-        new_bytes = base64.b64encode(screenshot).decode("utf-8")
-
-        encoded_bytes, boxes_details, encoded_cropped_bytes = cropped_image_process(encoded_image1=encoded_pyautogui_bytes1, encoded_image2=encoded_pyautogui_bytes2, process="markdown")
-        if not encoded_bytes or not boxes_details or not encoded_cropped_bytes:
-            print(f"pyautogui process did not have any difference")
-            encoded_bytes, boxes_details, encoded_cropped_bytes = cropped_image_process(encoded_image1=old_bytes, encoded_image2=new_bytes)
-
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
         encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+
         new_box = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -1512,20 +2042,18 @@ def markdown_process(current_answer: dict, encoded_pyautogui_bytes1: str, old_by
             box_type = current_box["type"]
             content = current_box["content"]
             new_box.append([icon, box_type, content])
-        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-        buffer = io.BytesIO(decoded_bytes)
-        image = Image.open(buffer)
+
         prompt = f"""
 You're an AI Applicant Helper that is in the markup process.
 
 Markdown definition: markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
 
-You're goal is to look at the the body text + the image to find all the options for the question we are in.
+You're goal is to look at the the body text + the two images to find all the options for the question we are in and to choose what option we need to arrow down to.
 
 current_question: {current_answer}
 body_text: {body_text}
 
-You will showcase all the options with the text and the option number in order.
+IMPORTANT:
 You will showcase the option choice you hope to click.
 You will also showcase the current option that our keyboard is at, so we know how many times we need to use the keyboard to go up or down to click the option_choice.
 Use the User Profile Section and common sense to help answer the markdown process.
@@ -1578,7 +2106,7 @@ Professional links:
 - Portfolio: {state["portfolio_url"]}
 - Where we found this job: Always choose other or another website or the choice that best resembles the answer ['other', 'another website' or something that is close.]
 
-Example output 1:
+Example to how you model your reasoning
 options: [
 {{
 text: Alabama,
@@ -1598,13 +2126,16 @@ option_number: 4
 }}
 ]
 
-option_choice: 3
-
+Example output
+{{
+option_choice: 3,
 current_option: 1
+}}
 
-option_reason: We are at the 1st highlighted option in the photo and we need to go to the third option to be correct
+Why we did that: The image shows we are on currently highlighted on option 1 and we need to go to option 3
 
-Example 2:
+
+Example to model your reasoning 2:
 options: [
 {{
 text: Alabama,
@@ -1624,11 +2155,14 @@ option_number: 4
 }}
 ]
 
-option_choice: 3
-
+Example output 2
+{{
+option_choice: 3,
 current_option: 0
+}}
 
-option_reason: There is currently no highlighted option in the photo and we need to move to the third option
+
+Why we did that: There is currently no highlighted option in the photo and we need to move to the third option
 """
 
         response = markdown_process_llm2.invoke([
@@ -1636,7 +2170,8 @@ option_reason: There is currently no highlighted option in the photo and we need
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_cropped_bytes}"}}
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_pyautogui_bytes2}"}}
                 ]
             }
         ])
@@ -1655,7 +2190,6 @@ option_reason: There is currently no highlighted option in the photo and we need
 
         print(f"Markdown decision: {decision}")
 
-        options = decision["options"]
         option_choice = decision["option_choice"]
         current_option = decision["current_option"]
 
@@ -1698,6 +2232,7 @@ option_reason: There is currently no highlighted option in the photo and we need
             return state
 
         elif markdown_status == "incorrect_and_box_closed":
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
             page.mouse.click(page_x, page_y)
             time.sleep(1)
             body_text = page.locator("body").inner_text()
@@ -1725,152 +2260,1326 @@ option_reason: There is currently no highlighted option in the photo and we need
         time.sleep(2)
     return state
 
-def review_markdown_process(current_answer: list, body_text: str, page_x: float, page_y: float, state: ApplicationState):
-    time.sleep(2)
+def markdown_process(current_answer: list, ai_answers: list[list], state: ApplicationState, white_x=None, white_y=None):
     page = state["current_page"]["page"]
-    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
-    do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
-    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
-    prompt = f"""
-You're an AI Applicant helper that's goal is to help answer questions on behalf of the user.
+    context = state.get("context")
+    page_count = len(context.pages)
+    print(f"current answer: {current_answer}")
+    current_question = current_answer[2]
+    print(f"markdown current question: {current_question}")
+    complete = False
+    for attempt in range(5):
+        encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+        pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 780))
+        buffer = io.BytesIO()
+        pyautogui_image.save(buffer, format="PNG")
+        pyautogui_bytes = buffer.getvalue()
+        pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+        data = {"image_input": pyautogui_encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        response = response.json()
+        pyautogui_encoded_bytes = response["encoded_bytes"]
+        pyautogui_boxes_details = response["boxes_details"]
+        pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=pyautogui_boxes_details)
 
-Your specific task is Markdown reviewer.
+        body_text = page.locator("body").inner_text()
+        page_elements = []
 
-Markdown definition: markdown - Used when clicking an element opens a list of selectable options, such as a dropdown, combobox, menu, or similar selection component. The markdown process is responsible for opening the element, discovering the available options, and selecting the correct option.
+        text_elements = ""
+        icon_elements = ""
+        for i in range(len(boxes_details)):
+            current_box = boxes_details[i]
+            icon = current_box["icon"]
+            box_type = current_box["type"]
+            bbox = current_box["bbox"]
+            coordinates = [round(bbox[0], 2), round(bbox[1], 2), round(bbox[2], 2), round(bbox[3], 2)]
+            content = current_box["content"]
+            if box_type == "text":
+                text_elements += f"{icon},{coordinates[0]},{coordinates[1]},{coordinates[2]},{coordinates[3]},{content}\n"
+            else:
+                icon_elements += f"{icon},{coordinates[0]},{coordinates[1]},{coordinates[2]},{coordinates[3]},{content}\n"
+        print(f"markdown current question: {current_question}")
+        prompt = f"""
 
-You will look at the current question and the answer and determine one of four things.
-1. correct - the information is correct and fully completed.
-2. incorrect - the answer inputted is wrong based on the User Profile.
-4. more markdown process - after the first step of the markdown process, there is another markdown process that needs to be done.
-5. more questions - after the first step of the markdown process, user inputs formed that need to be handled by the regular answer question process.
+You are an AI Applicant Helper handling ONLY the current job application question.
 
-Look at the current answer and specifically the current question to see determine your markdown_status!
 
-You only look at the current question markdown process and no other question on the page to determine the markdown_status.
 
-current_answer {current_answer}
+Use the visible page, body text, USER PROFILE, and common sense to determine the correct action.
 
-EX 1:
+Current Question: {current_question}
+
+PAGE ELEMENTS FORMAT
+[icon, coordinates, content]
+
+Text elements: {text_elements}
+
+Icon elements: {icon_elements}
+
+Body Text: {body_text}
+
+ACTIONS
+
+1. arrow
+Use for keyboard-selectable options/dropdowns.
+- Find ALL available options from the image/page/body text.
+- Identify the currently highlighted option.
+- Choose the option that best matches the USER PROFILE.
+- current_option = index of highlighted option.
+- option_choice = index of desired option.
+
+Format:
+["arrow", current_option, option_choice]
+
+
+2. fill
+Use when a text field only needs text entered.
+
+Format:
+["fill", icon, text]
+
+
+3. search
+Use when typing text causes suggestions/options to appear.
+Return all relevant text values that should be searched/entered.
+
+Format:
+["search", icon, current_question, list_of_text]
+
+
+4. click
+Use for a one-off click needed to complete ONLY the current question, such as selecting an option, continuing, or confirming.
+
+Format:
+["click", icon]
+
+
+OUTPUT
+
+Return ONE action using this structure:
+
 {{
-markdown_status: correct,
+    "action": "arrow" | "fill" | "search" | "click",
+    "icon": int | None,
+    "text": str | None,
+    "list_text": list[str] | None,
+    "current_question": str | None,
+    "current_option": int | None,
+    "option_choice": int | None
 }}
 
-Ex 2:
+Examples:
+
+Arrow:
 {{
-markdown_status: incorrect_and_box_open
+    "action": "arrow",
+    "icon": None,
+    "text": None,
+    "list_text": None,
+    "current_question": None,
+    "current_option": 0,
+    "option_choice": 4
 }}
 
-Ex 3:
+Fill:
 {{
-markdown_status: incorrect_and_box_closed
+    "action": "fill",
+    "icon": 10,
+    "text": "Charlotte",
+    "list_text": None,
+    "current_question": None,
+    "current_option": None,
+    "option_choice": None
 }}
 
-Ex 4:
+Search:
 {{
-markdown_status: more_markdown
+    "action": "search",
+    "icon": 7,
+    "text": None,
+    "list_text": ["Python", "Playwright", "Java"],
+    "current_question": {current_question},
+    "current_option": None,
+    "option_choice": None
 }}
 
-Ex 5:
+Click:
 {{
-markdown_status: more_questions
+    "action": "click",
+    "icon": 3,
+    "text": None,
+    "list_text": None,
+    "current_question": None,
+    "current_option": None,
+    "option_choice": None
 }}
 
 
-USER PROFILE:
+USER PROFILE
 
-Account information:
-- User ID: {state["user_id"]}
-- Email: {state["email"]}
-- Password: {state["password"]}
+Account:
+email={state["email"]}
+password={state["password"]}
 
-Personal information:
-- First name: {state["first_name"]}
-- Last name: {state["last_name"]}
-- Preferred name: {state["preferred_name"]}
-- Phone number: {state["phone_number"]}
+Personal:
+first_name={state["first_name"]}
+last_name={state["last_name"]}
+phone={state["phone_number"]}
 
 Address:
-- Address line 1: {state["address_line1"]}
-- Address line 2: {state["address_line2"]}
-- City: {state["city"]}
-- State: {state["user_state"]}
-- ZIP code: {state["zip_code"]}
-- Country: {state["country"]}
-- date: {state["date"]}
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
+date={state["date"]}
 
-Employment eligibility:
-- Authorized to work in the United States: {state["work_authorized"]}
-- Requires current or future employment sponsorship: {state["requires_sponsorship"]}
+Eligibility:
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
 
-Work Experience: {state["work_experience"]}
-Education: {state["education"]}
+Self-ID:
+veteran={state["veteran"]}
+disability={state["disability"]}
 
-Voluntary self-identification:
-- Veteran: {state["veteran"]}
-- Disability: {state["disability"]}
+Professional:
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
 
-Professional links:
-- LinkedIn: {state["linkedin_url"]}
-- GitHub: {state["github_url"]}
-- Portfolio: {state["portfolio_url"]}
-- Where we found this job: Always choose other or another website or the choice that best resembles the answer ['other', 'another website' or something that is close.]
+Work Experience:
+{state["work_experience"]}
 
+Education:
+{state["education"]}
 
-Resume: {state["resume_text"]}
-Cover letter: {state["cover_letter_text"]}
+Resume:
+{state["resume_text"]}
+
+Cover Letter:
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
 """
-    response = review_markdown_process_llm3.invoke([
+        if not complete:
+            response = markdown_process_llm2.invoke([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pyautogui_encoded_bytes}"}},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                    ]
+                }
+            ])
+            details = response["raw"]
+            
+
+            new_tokens, model_name = details_process(details=details)
+            state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+            answers = response["parsed"]
+            print(f"markdown answers: {answers}")
+            action = answers.get("action")
+            icon = answers.get("icon")
+            text = answers.get("text")
+            list_text = answers.get("list_text")
+            new_current_question = answers.get("current_question")
+            current_option = answers.get("current_option")
+            option_choice = answers.get("option_choice")
+            if new_current_question:
+                current_question = new_current_question
+            if action == "arrow":
+                current_answer = [action, current_option, option_choice]
+            elif action == "fill":
+                current_answer = [action, icon, text]
+            elif action == "search":
+                current_answer = [action, icon, current_question, list_text]
+            else:
+                current_answer = [action, icon]
+            state = markdown_action(current_answer=current_answer, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+            state, complete, action = review_markdown_process(current_question=current_question, ai_answers=ai_answers, state=state)
+        if complete:
+            if action == "white_pixel":
+                return state
+            state, fully_complete = complete_markdown_process(current_question=current_question, ai_answers=ai_answers, state=state)
+            if fully_complete:
+                return state
+    return state
+
+def review_markdown_process(current_question: str, ai_answers: list[list], state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
+    page_elements = []
+    text_elements = ""
+    icon_elements = ""
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 2), round(bbox[1], 2), round(bbox[2], 2), round(bbox[3], 2)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, content])
+        if box_type == "text":
+            text_elements += f"{icon},{coordinates[0]},{coordinates[1]},{coordinates[2]},{coordinates[3]},{content}\n"
+        else:
+            icon_elements += f"{icon},{coordinates[0]},{coordinates[1]},{coordinates[2]},{coordinates[3]},{content}\n"
+    print(f"review markdown current question: {current_question}")
+    prompt = f"""
+
+You are an AI Applicant Helper in the Review Markdown Process.
+
+Current Question: {current_question}
+
+PAGE ELEMENTS FORMAT
+[icon, coordinates, content]
+
+text elements: {text_elements}
+
+icon elements: {icon_elements}
+
+All Answers: {ai_answers}
+
+Decision Process
+
+IMPORTANT
+- Only look at the current question in your reasoning
+
+1. First only look at the current question
+2. If the question is answered correctly use the Escape Question Process
+3. If the question is incorrect or not answered use the Finish Question Process
+
+Finish Question Process
+1. First determine if the options for the current question is open or not
+2. If you see no options that means we need to reopen the box again.
+   - Your responsibility is to find the icon that reopens the question
+   - Example output: {{action: "click", icon: 8, complete: False}}
+
+
+3. If you see options for the question, you will just mark the question as complete and make the action and icon None
+   - Example: {{action: None, icon: None, complete: False}}
+
+Escape Question Process
+1. The first Step is to find all the questions in the image and list them
+    - If we only see our current question then we will use the "exit" action
+        - {{"action": "exit", "icon": whatever the exit icon is, complete: True}}
+    - If we see all the questions in the image, then we will use the "white_pixel" action
+        - {{"action": "white_pixel", "icon": -1, complete: True}}
+
+Output Format"
+action: str | None
+icon: int | None
+complete: bool
+
+Example 1:
+{{
+action: "click",
+icon: 12,
+complete: False
+reason:
+I chose to click the current question again because the current question was not finished.
+I chose to click the current question again because the answer was incorrect.
+}}
+
+Example 2:
+{{
+action: None,
+icon: None,
+complete: False
+reason:
+I chose to have no action because the option for the question is still open with no further action needing to be done.
+}}
+
+
+Example 3:
+{{
+action: "white_pixel",
+icon: -1,
+complete: True
+reason:
+I chose the white pixel because the question is answered correctly. We also see other questions in the image. Look at all answers to determine if other questions are in the image.
+}}
+
+Example 4:
+{{
+action: "exit",
+icon: 9,
+complete: True
+reason:
+I chose the exit action because the question is answered correctly but no other question is in the image, look at all answers for guidance.
+}}
+
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+
+Work Experience:
+
+{state["work_experience"]}
+
+
+Education:
+
+{state["education"]}
+
+
+Resume:
+
+{state["resume_text"]}
+
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+
+"""
+    response = review_markdown_process_llm2.invoke([
         {
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes2}"}}
             ]
         }
     ])
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
-    print(f"new tokens: {new_tokens}")
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
-    total_cost = state["token_usage"]["total_cost"]
-    if total_cost > 0.10:
-        state["action"] = "exit"
-        state["leaving_reason"] = f"The cost extended above $0.10 at the review markdown page process with the total being ${total_cost}"
-    decision = response["parsed"]
-    print(f"Markdown decision: {decision}")
-    markdown_status = decision["markdown_status"]
-    return markdown_status, state
+    answers = response["parsed"]
+    print(f"review markdown answers: {answers}")
+    action = answers.get("action")
+    icon = answers.get("icon")
+    complete = answers.get("complete")
+    if not action or not icon:
+        return state, complete, action
+    context = state.get("context")
+    page_count = len(context.pages)
+    current_answer = [action, icon]
+    if icon >= 0:
+        current_box = boxes_details[icon]
+    else:
+        current_box = -1
+    state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    return state, complete, action
 
-def click_and_view_process(current_answer: list, old_bytes: str, state: ApplicationState, white_x=None, white_y=None):
+
+
+def complete_markdown_process(current_question: str, ai_answers: list[list], state: ApplicationState):
     page = state["current_page"]["page"]
-    all_boxes = []
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, content])
+    prompt = f"""
+Your an AI Applicant helper in the complete markdown process.
+
+Your Task is to look at the instrucitons, images, all answers, and current question to help you through the complete markdown process.
+
+You will only be looking at the current question and no other question.
+
+current_question: {current_question}
+
+All Answers: {ai_answers}
+
+Instructions
+1. First determine if we see options for the current question or if we only see our question in the images and not any other questions, look at the image and All Answers to determine that.
+2. If we only see our question in the images, use the escape question process
+3. If we see options for the current question that is not natural, which means options are overlapping other questions, and we need to get rid of them, use the escape question process
+4. IF we see no other options for our question and see other questions in the image that means our question is complete and we don't need to use the escape question process.
+
+Escape Question Process
+1. Look at All Answers and determine if we only see our question on the images or do we see all questions.
+2. If we only see our question on the images.
+    - We need to find the exit icon to leave the question with the "exit" action.
+    - Look for an icon that will allow us to leave the question.
+    - Example output: {{action: "white_pixel", icon: -1, complete: True}}
+3. If we see more questions besides for our own.
+    - We use the "white_pixel" action to leave
+    - the icon we will return for "white_pixel" will always be -1.
+    - Example output: {{action: "exit", icon: 4, complete: True}}
+
+ACTIONS
+1. white_pixel - this will call a background pixel to leave the question, always call -1 for icon in white_pixel.
+2. exit - this will click an icon on the page to leave the current question
+For exit you need to be able to find the icon that will leave the current question so look at the images and NEW BOX to answer.
+
+current_question: {current_question}
+
+PAGE ELEMENTS FORMAT
+[icon, type, coordinates, content]
+
+Page Elements: {page_elements}
+
+ITEMS FORMAT
+[action, icon]
+[str, int]
+
+Example 1:
+{{
+action: "white_pixel"
+icon: -1
+complete: False
+}}
+Example 2:
+{{
+action: "exit"
+icon: 8
+complete: False
+}}
+Example 3:
+{{
+action: None
+icon: None
+complete: True
+}}
+"""
+    response = complete_markdown_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes2}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"complete search answer: {answer}")
+    action = answer.get("action")
+    icon = answer.get("icon")
+    complete = answer.get("complete")
+    if action:
+        if icon and icon >= 0:
+            current_box = boxes_details[icon]
+        else:
+            current_box = -1
+        context = state.get("context")
+        page_count = len(context.pages)
+        current_answer = [action, icon]
+
+
+        state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    return state, complete
+
+def markdown_action(current_answer: list, boxes_details: list[dict], full_page_width: int, full_page_height: int, page_count: int, state: ApplicationState):
+    print(f"current markdown answer: {current_answer}")
+    action = current_answer[0]
+    icon = current_answer[1]
+    current_box = boxes_details[icon]
+    state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    return state
+
+def search_process(all_text: list[str], current_question: str, ai_answers: list[list], state: ApplicationState, process=None):
+    page = state["current_page"]["page"]
+    context = state.get("context")
+    page_count = len(context.pages)
+    complete = False
+    current_text = all_text[0]
+    print(f"answers: {all_text}")
+    for attempt in range(6):
+        pyautogui.hotkey("enter")
+        time.sleep(4)
+        pyautogui.hotkey("down")
+        encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+        pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 780))
+        buffer = io.BytesIO()
+        pyautogui_image.save(buffer, format="PNG")
+        pyautogui_bytes = buffer.getvalue()
+        pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+        data = {"image_input": pyautogui_encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        response = response.json()
+        pyautogui_encoded_bytes = response["encoded_bytes"]
+        pyautogui_boxes_details = response["boxes_details"]
+        pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=pyautogui_boxes_details)
+        prompt = f"""
+Your an AI applicant helper whose job is to help us out in the search process.
+We have just entered some text and your job is to tell us one of a few things. 
+Only look at the current question and ignore the rest, our job is to only answer the current question.
+current_question: {current_question}
+
+Go through the Search Question Process to answer the question.
+
+Search Question Process
+1. Your First step is to find the current question in the images
+2. Determine if there are options available for the question in one of the images
+    - If no options are available for the question, then return {{"action": None, current_option: None, option_choice: None}}
+3. If the options are available go through this process
+    - First find the highlighted option to determine our current option
+    - Use the User Profile to answer the question, find the option that best fits the answer
+    - If no option fits the answer you determined, then return {{"action": None, current_option: None, option_choice: None}}
+    - If there is an option that fits your answer then return {{"action": arrow, current_option: whatever the highlighted option is, option_choice: whatever the option number you choose}}
+
+arrow - this means we need to move the arrow keys up or down to be able to click a suggestion for the skill or search item
+
+Within this process you will be tasked to review if we need to arrow down/up to enter an icon.
+
+If there are no options available just mark Items as None
+items: None
+
+Output Style
+action: str | None
+current_option: int | None
+option_choice: int | None
+
+
+Example 1
+{{
+action: "arrow"
+current_option: 4
+option_choice: 6
+}}
+
+Example 2
+{{
+action: "arrow"
+current_option: 0
+option_choice: 6
+}}
+
+Example 3
+{{
+action: None
+current_option: None
+option_choice: None
+}}
+
+USER PROFILE
+Account:
+email={state["email"]}
+password={state["password"]}
+
+Personal:
+first_name={state["first_name"]}
+last_name={state["last_name"]}
+phone={state["phone_number"]}
+
+Address:
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
+date={state["date"]}
+
+Eligibility:
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+veteran={state["veteran"]}
+disability={state["disability"]}
+
+Professional:
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+{state["work_experience"]}
+
+Education:
+{state["education"]}
+
+Resume:
+{state["resume_text"]}
+
+Cover Letter:
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+        if not complete:
+            response = search_process_llm2.invoke([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pyautogui_encoded_bytes}"}},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                    ]
+                }
+            ])
+            details = response["raw"]
+            new_tokens, model_name = details_process(details=details)
+            state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+            answers = response["parsed"]
+            print(f"search answers: {answers}")
+            action = answers.get("action")
+            option_inputted = False
+            if action:
+                option_inputted = True
+                current_option = answers.get("current_option")
+                option_choice = answers.get("option_choice")
+                current_answer = [action, current_option, option_choice]
+                state = search_action(current_answer=current_answer, state=state)
+            print(f"option inputted: {option_inputted}")
+            state, complete, next_text, action = review_search_process(all_text=all_text, current_text=current_text, current_question=current_question, ai_answers=ai_answers, option_inputted=option_inputted, state=state)
+            current_text = next_text
+        if complete:
+            if process or action == "white_pixel":
+                return state
+            state, fully_complete = complete_search_process(current_question=current_question, ai_answers=ai_answers, state=state)
+            if fully_complete:
+                return state
+    return state
+
+
+def review_search_process(current_question: str, all_text: list[str], current_text: str, ai_answers: list[list], option_inputted: bool, state: ApplicationState, process=None):
+    page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
+    page_elements = []
+    text_elements = ""
+    icon_elements = ""
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 2), round(bbox[1], 2), round(bbox[2], 2), round(bbox[3], 2)]
+        content = current_box["content"]
+        if box_type == "text":
+            text_elements += f"{icon},{coordinates[0]},{coordinates[1]},{coordinates[2]},{coordinates[3]},{content}\n"
+        else:
+            icon_elements += f"{icon},{coordinates[0]},{coordinates[1]},{coordinates[2]},{coordinates[3]},{content}\n"
+        page_elements.append([icon, box_type, coordinates, content])
+    print(f"review search process current question: {current_question}")
+    prompt = f"""
+
+
+You are an AI Applicant Helper handling ONLY the current question.
+
+Current Question: {current_question}
+All Text: {all_text}
+Current Text: {current_text}
+
+PAGE ELEMENTS
+[icon, coordinates, content]
+
+Text elements: {text_elements}
+
+Icon Elements: {icon_elements}
+
+AI Answers: {ai_answers}
+
+Option Inputted: {option_inputted}
+
+RULES
+
+If Current Text is NOT the last item in All Text:
+- Find the current question's text-input icon.
+- Return "click" and the NEXT item from All Text.
+
+If option inputted is False, here is option_inputted: {option_inputted} and we are on the last item of all text with no answer to the question so far then do this.
+- Find the current question's text-input icon.
+- Look at the Current Text and try searching a different text for the current text, use the User Profile as help.
+
+If Current Text IS the last item of the all text:
+- Other questions visible in AI Answers → "white_pixel", icon -1.
+- Only current question visible in AI Answers → "exit" using its exit icon.
+
+If option inputted is False and we are on the last item of all text with no answer to the question so far then do this.
+{{
+"action": "click",
+"icon": 12
+"reason": option inputted is false, there is no answered question, and we are on the last option in all text
+next_text: A different variation of current text, use User Profile as help
+}}
+
+OUTPUT
+{{
+"action": "click" | "white_pixel" | "exit",
+"icon": int,
+"reason": str,
+"next_text": str | None
+}}
+
+USER PROFILE
+email={state["email"]}
+password={state["password"]}
+name={state["first_name"]} {state["last_name"]}
+phone={state["phone_number"]}
+address={state["address_line1"]} {state["address_line2"]}, {state["city"]}, {state["user_state"]} {state["zip_code"]}, {state["country"]}
+date={state["date"]}
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+veteran={state["veteran"]}
+disability={state["disability"]}
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+work_experience={state["work_experience"]}
+education={state["education"]}
+resume={state["resume_text"]}
+cover_letter={state["cover_letter_text"]}
+
+Job source: prefer Other, Job Board, Website, or closest equivalent.
+"""
+    prompt = f"""
+You're an AI Applicant Helper and you will only be looking at the current question, images, and Boxes to help decide your answer.
+
+current_question: {current_question}
+
+all_text: {all_text}
+
+current_text: {current_text}
+
+PAGE ELEMENTS FORMAT
+[icon, coordinates, content]
+
+Text Elements: {text_elements}
+
+Icon Elements: {icon_elements}
+
+You have 3 options:
+
+All Answers: {ai_answers}
+
+Process for deciding output
+1. First look at the current question and see if we are on the last input of {all_text}
+2. If we are not on the last input of {all_text}
+    - we need to find the text icon of the current question to continue inputting our next text.
+3. If we are on the last input then we use the Escape Question Process.
+
+Escape Question Process
+1. Look at All Answers and determine if we only see our question on the images or do we see all questions.
+2. If we only see our question on the images.
+    - We need to find the exit icon to leave the question with the "exit" action.
+    - Look for an icon that will allow us to leave the question.
+    - Example output: {{action: "white_pixel", icon: -1, complete: True}}
+3. If we see more questions besides for our own.
+    - We use the "white_pixel" action to leave
+    - the icon we will return for "white_pixel" will always be -1.
+    - Example output: {{action: "exit", icon: 4, complete: True}}
+
+Actions
+1. click - we only use this to click the icon to enter text, if we have no more text to enter do no call this.
+2. white_pixel - we only use this if we have inputted the last text and there are more questions that show up on the images.
+3. exit - we use the exit action when we have inputted the last text and there is only the {current_question} on the images with no other questions present so we need to find the exit icon.
+
+Example Output Format:
+
+["Action", icon, "reason"]
+[str, int, str]
+
+Next text should be the next item in the all text list
+
+
+Example 1:
+
+{{
+action: "click"
+icon: 4
+reason: "We need to click icon 4 to allow us to input the next text"
+next_text: "whatever the next input is on the lists"
+}}
+
+
+Example 2:
+action: "white_pixel"
+icon: -1
+reason: "We have inputted every text and there are other questions present which means we use the white pixel"
+next_text: None
+
+Example 3:
+
+action: "exit"
+icon: 8
+reason: "We have inputted the last text in {all_text} and there is only the current question in the image which means we need to find and click the exit icon
+next_text: None
+
+USER PROFILE
+Account:
+email={state["email"]}
+password={state["password"]}
+
+Personal:
+first_name={state["first_name"]}
+last_name={state["last_name"]}
+phone={state["phone_number"]}
+
+Address:
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
+date={state["date"]}
+
+Eligibility:
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+veteran={state["veteran"]}
+disability={state["disability"]}
+
+Professional:
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+{state["work_experience"]}
+
+Education:
+{state["education"]}
+
+Resume:
+{state["resume_text"]}
+
+Cover Letter:
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+    prompt = f"""
+You are an AI Applicant Helper handling ONLY the current question.
+
+Current Question: {current_question}
+All Text: {all_text}
+Current Text: {current_text}
+All Answers: {ai_answers}
+
+PAGE ELEMENTS
+[icon, type, coordinates, content]
+
+{page_elements}
+
+RULES
+
+If Current Text is NOT the last item in All Text:
+- Find the current question's text-input icon.
+- Return "click" and the NEXT item from All Text.
+
+
+If Current Text IS the last item:
+- Other questions visible → "white_pixel", icon -1.
+- Only current question visible → "exit" using its exit icon.
+
+OUTPUT
+{{
+"action": "click" | "white_pixel" | "exit",
+"icon": int,
+"reason": str,
+"next_text": str | None
+}}
+
+USER PROFILE
+email={state["email"]}
+password={state["password"]}
+name={state["first_name"]} {state["last_name"]}
+phone={state["phone_number"]}
+address={state["address_line1"]} {state["address_line2"]}, {state["city"]}, {state["user_state"]} {state["zip_code"]}, {state["country"]}
+date={state["date"]}
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+veteran={state["veteran"]}
+disability={state["disability"]}
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+work_experience={state["work_experience"]}
+education={state["education"]}
+resume={state["resume_text"]}
+cover_letter={state["cover_letter_text"]}
+
+Job source: prefer Other, Job Board, Website, or closest equivalent.
+"""
+    response = review_search_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes2}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"review search answers: {answer}")
+    action = answer.get("action")
+    icon = answer.get("icon")
+    print(f"action: {action}")
+    print(f"icon: {icon}")
+    next_text = answer.get("next_text")
+    current_answer = [action, icon]
+    complete = False
+    if icon != None and icon >= 0:
+        current_box = boxes_details[icon]
+    else:
+        current_box = -1
+    if action != "click":
+        complete = True
+        if process:
+            return state, complete, next_text, action
+        context = state.get("context")
+        page_count = len(context.pages)
+        state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    else:
+        coordinates = current_box["bbox"]
+        page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+        page.mouse.click(page_x, page_y)
+        for i in range(500):
+            page.keyboard.press("Backspace")
+        page.keyboard.type(next_text)
+        page.keyboard.press("Enter")
+        time.sleep(4)
+    return state, complete, next_text, action
+
+def exit_question_process(current_quesstion: str, ai_answers: list[list], state: ApplicationState, all_text=None, process=None):
+    page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, content])
+    print(f"current question: {current_question}")
+    print(f"all text: {all_text}")
+    print(f"page elements: {page_elements}")
+    prompt = f"""
+You are an AI Applicant Helper handling ONLY the current question.
+
+Current Question: {current_question}
+All Text: {all_text}
+
+PAGE ELEMENTS
+[icon, type, coordinates, content]
+
+RULES
+
+If Current Text is NOT the last item in All Text:
+- Find the current question's text-input icon.
+- Return "click" and the NEXT item from All Text.
+
+If Current Text IS the last item:
+- Other questions visible → "white_pixel", icon -1.
+- Only current question visible → "exit" using its exit icon.
+
+OUTPUT
+{{
+"action": "click" | "white_pixel" | "exit",
+"icon": int,
+"reason": str,
+"next_text": str | None
+}}
+
+USER PROFILE
+email={state["email"]}
+password={state["password"]}
+name={state["first_name"]} {state["last_name"]}
+phone={state["phone_number"]}
+address={state["address_line1"]} {state["address_line2"]}, {state["city"]}, {state["user_state"]} {state["zip_code"]}, {state["country"]}
+date={state["date"]}
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+veteran={state["veteran"]}
+disability={state["disability"]}
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+work_experience={state["work_experience"]}
+education={state["education"]}
+resume={state["resume_text"]}
+cover_letter={state["cover_letter_text"]}
+
+Job source: prefer Other, Job Board, Website, or closest equivalent.
+"""
+    response = review_search_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes2}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"review search answers: {answer}")
+    action = answer.get("action")
+    icon = answer.get("icon")
+    print(f"action: {action}")
+    print(f"icon: {icon}")
+    next_text = answer.get("next_text")
+
+def complete_search_process(current_question: str, ai_answers: list[list], state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, content])
+    prompt = f"""
+Your an AI Applicant helper in the complete search process.
+
+We have entered all the text in the search process.
+
+We will only be looking at the current question
+
+current_question: {current_question}
+
+All Answers: {ai_answers}
+
+IMPORTANT
+1. First determine if we see options for the current question or if we only see our question in the images and not any other questions, look at the image and All Answers to determine that.
+2. If we only see our question in the images, use the escape question process
+3. If we see options for the current question that is not natural, which means options are overlapping other questions, and we need to get rid of them, use the escape question process
+4. IF we see no other options for our question and see other questions in the image that means our question is complete and we don't need to use the escape question process.
+
+All Answers: {ai_answers}
+
+current_question: {current_question}
+
+Escape Question Process
+1. Look at All Answers and determine if we only see our question on the images or do we see all questions.
+2. If we only see our question on the images.
+    - We need to find the exit icon to leave the question with the "exit" action.
+    - Look for an icon that will allow us to leave the question.
+    - Example output: {{action: "white_pixel", icon: -1, complete: True}}
+3. If we see more questions besides for our own.
+    - We use the "white_pixel" action to leave
+    - the icon we will return for "white_pixel" will always be -1.
+    - Example output: {{action: "exit", icon: 4, complete: True}}
+
+ACTIONS
+1. white_pixel - this will call a background pixel to leave the question, always call -1 for icon in white_pixel.
+2. exit - this will click an icon on the page to leave the current question
+For exit you need to be able to find the icon that will leave the current question so look at the images and NEW BOX to answer.
+
+PAGE ELEMENTS FORMAT
+[icon, type, coordinates, content]
+
+Page Elements: {page_elements}
+
+ITEMS FORMAT
+[action, icon]
+[str, int]
+
+Example 1:
+{{
+action: "white_pixel"
+icon: -1
+complete: False
+}}
+Example 2:
+{{
+action: "exit"
+icon: 8
+complete: False
+}}
+Example 3:
+{{
+action: None
+icon: None
+complete: True
+}}
+"""
+    response = complete_search_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes2}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"complete search answer: {answer}")
+    action = answer.get("action")
+    icon = answer.get("icon")
+    complete = answer.get("complete")
+    if action:
+        if icon and icon >= 0:
+            current_box = boxes_details[icon]
+        else:
+            current_box = -1
+        context = state.get("context")
+        page_count = len(context.pages)
+        current_answer = [action, icon]
+
+
+        state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    return state, complete
+
+def search_action(current_answer: list, state: ApplicationState):
+    print(f"search action answer: {current_answer}")
+    action = current_answer[0]
+    if action == "arrow":
+        print(f"going through search action")
+        option_choice = current_answer[1]
+        current_option = current_answer[2]
+        option_difference = option_choice - current_option
+        if option_difference == 0:
+            pyautogui.hotkey("up")
+            pyautogui.hotkey("down")
+            pyautogui.hotkey("enter")
+        elif option_difference > 0:
+            for i in range(option_difference):
+                pyautogui.hotkey("down")
+            pyautogui.hotkey("enter")
+        else:
+            for i in range(abs(option_difference)):
+                pyautogui.hotkey("up")
+            pyautogui.hotkey("enter")
+    return state
+
+
+def click_and_view_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+    context = state.get("context")
+    page_count = len(context.pages)
+
     for attempt in range(5):
-        print(f"Click and view attempt: {attempt + 1}")
         encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
-        encoded_bytes, boxes_details, ecoded_cropped_bytes = cropped_image_process(encoded_image1=old_bytes, encoded_image2=encoded_bytes)
-        current_question = current_answer[2] if len(current_answer) > 2 else None
-        new_box = []
-        for i in range(len(boxes_details)):
-            current_box = boxes_details[i]
-            icon = current_box["icon"]
-            box_type = current_box["type"]
-            content = current_box["content"]
-            new_box.append([icon, box_type, content])
-        all_boxes.append(new_box)
+        encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+
+        encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+        encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
+
+        # Convert the OmniParser results into the smaller format
+        # that will be sent to the AI.
+        page_elements = []
+
+        for current_box in boxes_details:
+            bbox = current_box["bbox"]
+            coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4),]
+            page_elements.append([current_box["icon"], current_box["type"], coordinates, current_box["content"]])
+
+        coordinates = []
+
+        for current_box in boxes_details:
+            coordinates.append(current_box["bbox"])
+
+        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
 
         prompt = f"""
-You are completing only the section revealed by a click_and_view action in a job application.
-
-CURRENT SECTION
-{current_question}
+You are an AI job-application assistant completing fields revealed by an
+"Add more" or "Add another" option.
 
 GOAL
-- Correctly answer every required question.
+- Correctly answer every relevant visible question.
 - Fix visible validation errors.
 - Leave already-correct answers unchanged.
-- Use the user's profile first and reasonable inference when necessary.
-- Return an action for every relevant visible question.
-- Use the input/option icon, not the question-label icon, when possible.
+- Use the user's profile as the primary source of truth.
+- Use reasonable inference when the profile does not directly provide an answer.
+- Complete all currently visible fields before clicking an "Add more" option.
+- Return an action for every visible field that needs an action.
+- Use the input or option icon instead of the question-label icon.
+- Do not submit or advance the overall application.
+
+HOW THIS PROCESS WORKS
+- Never pick the icon that is used to submit or to save and continue, that is for another process.
+- Its final action can be click_and_view when an "Add more" option should
+  reveal another group of questions.
+- If no "Add more" option should be clicked, do not return click_and_view.
+- Returning no click_and_view action tells the controller that this process
+  is complete.
+- Do not return a submit action
 
 ACTIONS
 skip: No change needed or question should be skipped.
@@ -1883,21 +3592,18 @@ upload_resume: Resume upload field. Requires icon.
 upload_cover_letter: Cover-letter upload field. Requires icon.
 click_and_view: Click only when it reveals additional fields/questions that must be completed. Requires icon + question.
 markdown: Dropdown/combobox/menu requiring option discovery and selection. Requires icon + current_question.
+add_more: add another option will add more items for examples like add more education, add more experience, things of that nature
 
-IMPORTANT
-- Handle only questions/fields revealed by this section.
-- add_option should be true when we need to add more information in this section and add_option should be false when we don't need to add more information in this section
-- Use submit action for when we are adding more information in this section.
-- Ignore unrelated fields that existed before it opened.
-- Fix visible errors inside this section.
-- Leave correct existing answers unchanged.
-- Use the user's profile first and reasonable inference when necessary.
-- Use the input/option icon, not the question-label icon, when possible.
-- Use submit only for a Save/Add/Done/Confirm/Continue control belonging to this section.
-- Use delete or delete and fill if one of the inputted answers is incorrect.
+
+Page Elements format
+[icon, type, coordinates, content]
+
+PAGE ELEMENTS
+{page_elements}
 
 ITEMS ELEMENTS
 
+ACTIONS
 skip: [action]
 
 fill: [action, icon, action_text]
@@ -1914,192 +3620,111 @@ upload_resume: [action, icon]
 
 upload_cover_letter: [action, icon]
 
-click_and_view: [action, icon, current_question]
-
 markdown: [action, icon, current_question]
 
-submit: [action, icon]
+add_more: [action, icon, submit_text]
 
-ACTIONS
 
 Example:
 
-items: [["skip"], ["fill", 28, {state["email"]}], ["fill_with_time", 35, "08/01/2020"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["upload_resume", 50], ["upload_cover_letter", 52], ["click_and_view", 22, "Add More Work Experience"], ["markdown", 60, "What U.S. State are you in?"], ["submit", 30]]
-
-add_option: True
-
-Page Elements format:
-[icon, type, content]
-
-PAGE ELEMENTS
-{new_box}
+items: [["skip"], ["fill", 28, {state["email"]}], ["fill_with_time", 35, "08/01/2020"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["upload_resume", 50], ["upload_cover_letter", 52], ["markdown", 60, "What U.S. State are you in?"], ["add_more", 30]]
 
 USER PROFILE
+Account:
 email={state["email"]}
 password={state["password"]}
-name={state["first_name"]} {state["last_name"]}
+
+Personal:
+first_name={state["first_name"]}
+last_name={state["last_name"]}
 phone={state["phone_number"]}
-address={state["address_line1"]}, {state["address_line2"]}, {state["city"]}, {state["user_state"]} {state["zip_code"]}, {state["country"]}
+
+Address:
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
 date={state["date"]}
+
+Eligibility:
 work_authorized={state["work_authorized"]}
-sponsorship={state["requires_sponsorship"]}
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
 veteran={state["veteran"]}
 disability={state["disability"]}
+
+Professional:
 linkedin={state["linkedin_url"]}
 github={state["github_url"]}
 portfolio={state["portfolio_url"]}
-work_experience={state["work_experience"]}
-education={state["education"]}
-resume={state["resume_text"]}
-cover_letter={state["cover_letter_text"]}
 
-Set add_option=True only when the section should submit/save this entry and another user entry remains to be added.
-Otherwise set add_option=False.
+Work Experience:
+{state["work_experience"]}
 
-If asked how the job was found, prefer Other/Website/Job Board or the closest equivalent.
+Education:
+{state["education"]}
+
+Resume:
+{state["resume_text"]}
+
+Cover Letter:
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
 """
-        response = question_process_llm2.invoke([
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
-                ]
-            }
-        ])
+
+        response = question_process_llm2.invoke(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}},
+                        {"type": "image_url","image_url": {"url": f"data:image/png;base64,{encoded_bytes2}"}},
+                    ],
+                }
+            ]
+        )
+
         details = response["raw"]
+        print(f"Click and view details: {details}")
+
         new_tokens, model_name = details_process(details=details)
-        print(f"new tokens: {new_tokens}")
+
         state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+
         total_cost = state["token_usage"]["total_cost"]
+
         if total_cost > 0.10:
             state["action"] = "exit"
-            state["leaving_reason"] = f"The cost extended above $0.10 at the click and view page process with the total being ${total_cost}"
-        answers = response["parsed"]
-        ai_answers = answers["items"]
-        print(f"AI Answers: {ai_answers}")
-        temporary_submit_index = None
-        temporary_click_and_view_elements = []
-        temporary_click_and_view_index = 0
-        state["temporary_click_and_view_index"] = temporary_click_and_view_index
-        for i in range(len(ai_answers)):
-            current_ans = ai_answers[i]
-            action = current_ans[0] if len(current_ans) > 0 else None
-            print(f"action: {action}")
-            if action == "click_and_view":
-                current_click = []
-                current_click.append(current_ans)
-                current_click_icon = current_ans[1] if len(current_ans) > 1 else None
-                if current_click_icon is None:
-                    current_click.append({"icon_status": None})
-                    temporary_click_and_view_elements.append(current_click)
-                    continue
-                coordinates = boxes_details[current_click_icon]["bbox"]
-                page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
-                if (page_x is not None and page_y is not None and math.isfinite(page_x) and math.isfinite(page_y)):
-                    page.mouse.click(page_x, page_y, button="right")
-                    current_click_element = page.evaluate("""
-                                () => {
-                                    const el = document.activeElement;
-                                    const box = el.getBoundingClientRect();
-                    
-                                    return {
-                                        tag: el.tagName.toLowerCase(),
-                    
-                                        attributes: Object.fromEntries(
-                                            Array.from(el.attributes).map(attr => [
-                                                attr.name,
-                                                attr.value
-                                            ])
-                                        ),
-                    
-                                        text: el.innerText,
-                    
-                                        bounding_box: {
-                                            x: box.x,
-                                            y: box.y,
-                                            width: box.width,
-                                            height: box.height
-                                        },
-                    
-                                        center: {
-                                            x: box.x + box.width / 2,
-                                            y: box.y + box.height / 2
-                                        }
-                                    };
-                                }
-                            """)
-                    current_click_element["icon_status"] = True
-                    print(f"Current click element: {current_click_element}")
-                    current_click.append(current_click_element)
-                    temporary_click_and_view_elements.append(current_click)
-                    if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
-                        page.mouse.click(white_x, white_y)
-                else:
-                    current_click.append({"icon_status": False})
-                    temporary_click_and_view_elements.append(current_click)
-            
-            if action == "submit":
-                print(f"submit answer: {current_ans}")
-                submit_icon = current_ans[1] if len(current_ans) > 1 else None
-                if submit_icon is None:
-                    continue
-                coordinates = boxes_details[submit_icon]["bbox"]
-                page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
-                if (page_x is not None and page_y is not None and math.isfinite(page_x) and math.isfinite(page_y)):
-                    page.mouse.click(page_x, page_y, button="right")
-                    temporary_submit_element = page.evaluate("""
-                                () => {
-                                    const el = document.activeElement;
-                                    const box = el.getBoundingClientRect();
-                    
-                                    return {
-                                        tag: el.tagName.toLowerCase(),
-                    
-                                        attributes: Object.fromEntries(
-                                            Array.from(el.attributes).map(attr => [
-                                                attr.name,
-                                                attr.value
-                                            ])
-                                        ),
-                    
-                                        text: el.innerText,
-                    
-                                        bounding_box: {
-                                            x: box.x,
-                                            y: box.y,
-                                            width: box.width,
-                                            height: box.height
-                                        },
-                    
-                                        center: {
-                                            x: box.x + box.width / 2,
-                                            y: box.y + box.height / 2
-                                        }
-                                    };
-                                }
-                            """)
-                    print(f"Submit Element: {temporary_submit_element}")
-                    temporary_submit_index = i
-                    state["temporary_submit_element"] = temporary_submit_element
-                    if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
-                        page.mouse.click(white_x, white_y)
-        if temporary_submit_index == None:
-            state["temporary_submit_element"] = None
-        if len(temporary_click_and_view_elements) == 0:
-            state["temporary_click_and_view_elements"] = []
-        else:
-            state["temporary_click_and_view_elements"] = temporary_click_and_view_elements
+            state["leaving_reason"] = (
+                "The cost exceeded $0.10 during the click-and-view "
+                f"process. Total cost: ${total_cost}"
+            )
+            return state
 
         answers = response["parsed"]
         ai_answers = answers["items"]
-        add_option = answers["add_option"]
-        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, white_x=white_x, white_y=white_y, process="temporary")
-        if add_option == True:
-            continue
-        click_and_view_status, state = review_click_and_view_process(current_answer=current_answer, old_bytes=old_bytes, state=state)
-        if click_and_view_status == "complete":
-            break
+
+        print(f"Click and view AI answers: {ai_answers}")
+
+        add_more = False
+        for i in range(len(ai_answers)):
+            current_answer = ai_answers[i]
+            action = current_answer[0] if len(current_answer) > 0 else None
+            if action == "add_more":
+                add_more = True
+
+        if not add_more:
+            state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, white_x=white_x, white_y=white_y)
+            return state
+
+        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, white_x=white_x, white_y=white_y)
+
+
     return state
 
 def review_click_and_view_process(
@@ -2341,7 +3966,9 @@ GPA: 4.0
 
 Experience
 Software Engineering Intern
-Developed automation tools using Python and Playwright.
+Developed automation tools using Python, Playwright, and SQL.
+
+I am legally authorized to work in America.
 """
 
     state["resume_upload"] = "resume.pdf"
@@ -2429,14 +4056,13 @@ def complete_application(url2: str):
         }
         user_id = "76f6e1cd-85de-46f7-b4c7-074284b3a1cc"
         time.sleep(5)
+        pyautogui.moveTo(0, 0)
         final_state = mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage, "browser": browser, "context": context, "user_id": user_id})
         print(f"final_state: {final_state}")
         leaving_reason = final_state.get("leaving_reason")
         print(f"Browser closing due to : {leaving_reason}")
         browser.close()
-try:
-    complete_application(url)
-except Exception as e:
-    print(f"error: {e}")
+
+complete_application(url)
 
 print("hello world")

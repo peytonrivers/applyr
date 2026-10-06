@@ -56,14 +56,30 @@ class FindIcon(TypedDict):
 
 class QuestionProcess(TypedDict):
     items: list[list]
+    error: str | None
     add_option: bool | None
 
 class ReviewQuestionProcess(TypedDict):
     decision: Literal["same_form", "new_form", "different_page"]
-    reason: Annotated[str, "Maximum 5 words."]
 
 class ReviewClickAndViewProcess(TypedDict):
     click_and_view_status: Literal["complete", "more_questions", "incorrect"]
+
+class SearchProcess(TypedDict):
+    action: str | None
+    current_option: int | None
+    option_choice: int | None
+
+class ReviewSearchProcess(TypedDict):
+    action: str | None
+    icon: int | None
+    reason: str
+    next_text: str | None
+
+class CompleteSearchProcess(TypedDict):
+    action: str | None
+    icon: int | None
+    complete: bool
 
 class SignupProcess(TypedDict):
     input_indexes: list[int] | None
@@ -171,14 +187,47 @@ class PageDecision(TypedDict):
     reason: str
 
 class MarkdownProcess(TypedDict):
-    options: list[dict]
-    option_choice: int
-    current_option: int
-    option_reason: Annotated[str, "Maximum 5 words."]
+    action: str | None
+    icon: int | None
+    text: int | None
+    list_text: list[str] | None
+    current_question: int | None
+    current_option: int | None
+    option_choice: int | None
 
 class ReviewMarkdownProcess(TypedDict):
-    markdown_status: Literal["correct", "incorrect_and_box_open", "incorrect_and_box_closed", "more_markdown", "more_questions"]
-    reason: Annotated[str, "Maximum 5 words."]
+    action: str | None
+    icon: int | None
+    complete: bool
+    reason: str
+
+class CompleteMarkdownProcess(TypedDict):
+    action: str | None
+    icon: int | None
+    complete: bool
+
+class TextTimeProcess(TypedDict):
+    action: str | None
+    left_arrow: int | None
+    text: str | None
+    reason: str | None
+
+class ReviewTimeProcess(TypedDict):
+    text_inputted: bool
+    image1: bool | None
+    image2: bool | None
+    complete: bool
+
+class CalendarTimeProcess(TypedDict):
+    action: str | None
+    icon: str | None
+    current_day: int | None
+    current_month: int | None
+    current_year: int | None
+    desired_day: int | None
+    desired_month: int | None
+    desired_year: int | None
+    complete: bool
 
 class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────
@@ -282,6 +331,8 @@ class ApplicationState(TypedDict):
     temporary_submit_element: dict | None
 
     # click and view index
+    click_and_view_count = int
+    current_click_and_view_count = int
     click_and_view_index: int | None
     click_and_view_elements: list[dict]
     temporary_click_and_view_index: int | None
