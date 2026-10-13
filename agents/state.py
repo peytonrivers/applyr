@@ -60,7 +60,8 @@ class QuestionProcess(TypedDict):
     add_option: bool | None
 
 class ReviewQuestionProcess(TypedDict):
-    decision: Literal["same_form", "new_form", "different_page"]
+    decision: str
+    reason: str
 
 class ReviewClickAndViewProcess(TypedDict):
     click_and_view_status: Literal["complete", "more_questions", "incorrect"]
@@ -69,6 +70,7 @@ class SearchProcess(TypedDict):
     action: str | None
     current_option: int | None
     option_choice: int | None
+    all_options: list[str]
 
 class ReviewSearchProcess(TypedDict):
     action: str | None
@@ -206,11 +208,23 @@ class CompleteMarkdownProcess(TypedDict):
     icon: int | None
     complete: bool
 
-class TextTimeProcess(TypedDict):
+class FindTimeProcess(TypedDict):
     action: str | None
-    left_arrow: int | None
-    text: str | None
-    reason: str | None
+    icon: int | None
+    complete: bool
+
+class ReviewFindTimeProcess(TypedDict):
+    action: str | None
+    icon: int | None
+    image1: bool
+    image2: bool
+
+class TextTimeProcess(TypedDict):
+    action: str
+    desired_date: str
+    left_arrow: int
+    image1: bool
+    image2: bool
 
 class ReviewTimeProcess(TypedDict):
     text_inputted: bool
@@ -220,14 +234,18 @@ class ReviewTimeProcess(TypedDict):
 
 class CalendarTimeProcess(TypedDict):
     action: str | None
-    icon: str | None
-    current_day: int | None
-    current_month: int | None
-    current_year: int | None
-    desired_day: int | None
-    desired_month: int | None
-    desired_year: int | None
+    icon: int | None
+    current_day: int
+    current_month: int
+    current_year: int
+    desired_day: int
+    desired_month: int
+    desired_year: int 
+    image1: bool
+    image2: bool
     complete: bool
+    reason: str
+
 
 class ApplicationState(TypedDict):
     # ── User Identity ──────────────────────────────

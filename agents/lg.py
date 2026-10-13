@@ -22,7 +22,7 @@ import json
 import time
 import base64
 from datetime import datetime
-from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess
+from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, FindTimeProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess, ReviewFindTimeProcess
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -81,15 +81,19 @@ find_icon_process_llm3 = llm3.with_structured_output(FindIcon, include_raw=True)
 search_process_llm2 = llm2.with_structured_output(SearchProcess, include_raw=True)
 review_search_process_llm2 = llm2.with_structured_output(ReviewSearchProcess, include_raw=True)
 complete_search_process_llm2 = llm2.with_structured_output(CompleteSearchProcess, include_raw=True)
+find_time_process_llm2 = llm2.with_structured_output(FindTimeProcess, include_raw=True)
+review_find_time_process_llm2 = llm2.with_structured_output(ReviewFindTimeProcess, include_raw=True)
 text_time_process_llm2 = llm2.with_structured_output(TextTimeProcess, include_raw=True)
 review_time_process_llm2 = llm2.with_structured_output(ReviewTimeProcess, include_raw=True)
 calendar_time_process_llm2 = llm2.with_structured_output(CalendarTimeProcess, include_raw=True)
 
 url = "https://www.allstate.jobs/job/23890328/software-engineering-manager-java-/"
-url = "https://testing-kohl-psi.vercel.app/"
+url = "https://www.allstate.jobs/job/23927829/software-engineer-all-levels-/"
+# url = "https://testing-kohl-psi.vercel.app/"
+url = "https://apply.deloitte.com/en_US/careers/InviteToApply?jobId=350244&source=LinkedIn"
+url = "https://job-boards.greenhouse.io/embed/job_app?token=8003605&for=coinbase&gh_src=wvu4737r1us&gh_jid=8003605"
 print(url.title)
 model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000], ["gpt-6-luna", 0.10 / 1000000, 0.50 / 1000000, 0.01 / 1000000]]
-
 
 def ai_token_tracker(new_tokens: dict, model_name: str, state: ApplicationState):
     token_check = False
@@ -161,7 +165,35 @@ def details_process(details: dict):
     return new_tokens, model_name  
 
 
-def empty_pixel_process(encoded_bytes: str, coordinates: list[list], full_page_width: int, full_page_height: int):
+def empty_pixel_process(encoded_bytes: str, boxes_details: list[dict], full_page_width: int, full_page_height: int):
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-9"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    image_width, image_height = image.size
+    coordinates = []
+    remove_columns = []
+    remove_rows = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        bbox = current_box["bbox"]
+        coordinate = [bbox[0], bbox[1], bbox[2], bbox[3]]
+        coordinates.append(coordinate)
+
+    for i in range(len(image_width)):
+        remove_rows.append(i)
+    
+    for i in range(len(image_height)):
+        remove_columns.append(i)
+
+    
+                           
+
+def empty_pixel_process(encoded_bytes: str, boxes_details: list[dict], full_page_width: int, full_page_height: int):
+    coordinates = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        bbox = current_box["bbox"]
+        coordinates.append([bbox[0], bbox[1], bbox[2], bbox[3]])
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
@@ -296,21 +328,16 @@ def screenshot_process(state: ApplicationState):
     encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
     return encoded_bytes, full_page_width, full_page_height
 
-def omniparser_process(state: ApplicationState):
-    page = state["current_page"]["page"]
-    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
-    encoded_bytes, full_page_width, full_page_height = screenshot_process(state)
+def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_width=None, full_page_height=None):
+    if not encoded_bytes:
+        page = state["current_page"]["page"]
+        full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(state)
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]
-    coordinates = []
-    for i in range(len(boxes_details)):
-        current_box = boxes_details[i]
-        coordinate = current_box["bbox"]
-        coordinates.append(coordinate)
-    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     return encoded_bytes, boxes_details, full_page_width, full_page_height
 
 def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
@@ -362,6 +389,7 @@ def decide_page(state: ApplicationState):
     4. verification - You choose this page if there is a verification code that needs to be filled out, or if you need to verify an email, anything to do with verifying an account.
     5. exit - You choose this page if there the url isn't active or we have finished the job application or if they cost is great than $0.005.
     6. wait - if the page is blank and has nothing forms, steps, or content on the page then choose the wait process. 
+    7. complete - If the application is the complete and fully submitted please mark this as complete so we can tell the user that his application is fully submitted.
 
     Current Cost: ${state["token_usage"]["total_cost"]}
 
@@ -443,14 +471,9 @@ def signup_routing(state: ApplicationState):
         return "decide_page"
 
 def wait_process(state: ApplicationState):
-    page = state.get("page")
-    if not page:
-        state["leaving_reason"] = "page not found"
-        return "exit"
-    page = page.get("current_page")
-    if not page:
-        state["leaving_reason"] = "page not found"
-        return "exit"
+    page = state["current_page"]["page"]
+    print(f"page: {page}")
+    print("we are in the wait process")
     time.sleep(20)
     body_text = page.locator("body").inner_text()
     if len(body_text) > 20:
@@ -767,6 +790,7 @@ def answser_question_process(state: ApplicationState):
 
     body_text = " ".join(full_text.split()[:100])
     all_text = [body_text]
+    all_reasons = []
 
     previous_answers = []
 
@@ -776,8 +800,6 @@ def answser_question_process(state: ApplicationState):
         encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
         encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
         decoded_bytes2 = base64.b64decode(encoded_bytes2.encode("utf-8"))
-        buffer = io.BytesIO(decoded_bytes2)
-        image = Image.open(buffer)
         page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -788,12 +810,7 @@ def answser_question_process(state: ApplicationState):
             content = current_box["content"]
             page_elements.append([icon, box_type, coordinates, content])
     
-        coordinates = []
-        for coord in range(len(boxes_details)):
-            current_box = boxes_details[coord]
-            coordinate = current_box["bbox"]
-            coordinates.append(coordinate)
-        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height)
         
         prompt = f"""
 You are completing a job application form using the user's profile and the visible page.
@@ -803,7 +820,7 @@ You need to look at the images to think logically on how to answer the questions
 GOAL
 - Correctly answer every required question.
 - Fix visible validation errors.
-- Leave already-correct answers unchanged.
+- If a question is answered leave unchanged unl
 - Use the user's profile first and reasonable inference when necessary.
 - Return an action for every relevant visible question.
 - Use the input/option icon, not the question-label icon, when possible.
@@ -811,8 +828,9 @@ GOAL
 ACTIONS
 skip: No change needed or question should be skipped.
 fill: Fill an empty input. Requires action_text + icon.
-time: Any question that has anything to due with time. Requires icon + current_question. Never click the calendar icon but always choose the text icon instead.
+time: Any question that has anything to due with time. Requires icon + current_question.
 delete: Clear incorrect/unwanted text. Requires icon.
+delete_and_fill: Delete text and fill it in with new text.
 click: Select/unselect an immediately answerable option. Requires icon.
 search: When you need to search something or enter skills that could possibly add suggested drop downs, search texts must always be one word.
 upload_resume: Resume upload field. Requires icon.
@@ -844,6 +862,8 @@ fill: [action, icon, action_text]
 
 delete: [action, icon]
 
+delete: [action, icon, action_text]
+
 click: [action, icon]
 
 time: [action, icon, current_question]
@@ -864,9 +884,10 @@ ACTIONS
 
 Example:
 
-items: [["skip"], ["fill", 28, {state["email"]}], ["fill_with_time", 35, "08/01/2020"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["search", ["python", "playwright", "java"]], ["search", 8, "What skills do you have", ["skill 1", "skill 2", "skill 3"]], ["upload_resume", 50], ["upload_cover_letter", 52], ["click_and_view", 22, "Add More Work Experience"], ["markdown", 60, "What U.S. State are you in?"], ["submit", 30]]
+items: [["skip"], ["fill", 28, {state["email"]}], ["delete_and_fill", 75, "{state["country"]}] ["time", 35, "When do you graduate?"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["search", ["python", "playwright", "java"]], ["search", 8, "What skills do you have", ["skill 1", "skill 2", "skill 3"]], ["upload_resume", 50], ["upload_cover_letter", 52], ["click_and_view", 22, "Add More Work Experience"], ["markdown", 60, "What U.S. State are you in?"], ["submit", 30]]
 error: yes there was an error on checking a box and I handled it by clicking a box to fix it.
 
+Current Attempt on Page: {attempt}
 
 PREVIOUS ANSWERS TO HELP WITH ERROR HANDLING
 [{previous_answers}]
@@ -944,7 +965,7 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
         context = state.get("context")
         page_count = len(context.pages)
         state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, white_x=white_x, white_y=white_y, page_count=page_count)
-        state, decision = review_answer_question_process(state=state, all_text=all_text)
+        state, decision, all_reasons = review_answer_question_process(state=state, all_text=all_text, all_reasons=all_reasons)
         del all_text[-1]
         if decision == "same_form":
             continue
@@ -954,47 +975,58 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
         elif decision == "different_page":
             state["signup_action"] = "different_page"
             return state
+        elif decision == "complete":
+            state["signup_action"] = "complete"
+            return state
 
     state["signup_action"] = "max_tries"
     state["leaving_reason"] = "Max tries for the forms process"
     return state
 
-def review_answer_question_process(state: ApplicationState, all_text: list[str]):
+def review_answer_question_process(state: ApplicationState, all_text: list[str], all_reasons: list[str]):
     page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
     total_cost = state["token_usage"]["total_cost"]
     if total_cost >= 0.10:
         state["leaving_reason"] = "Total cost greater than $0.10"
         return state, "total_cost"
-    encoded_bytes = screenshot_process(state=state)
     full_text = page.locator("body").inner_text()
 
     body_text = " ".join(full_text.split()[:100])
     all_text.append(body_text)
-    print(f"all text: {all_text}")
-    print(f"all text count: {len(all_text)}")
+    print(f"all reasons: {all_reasons}")
     prompt = f"""
 Your an AI Applicant helper and your job is to look at the two different lists of body text and determine.
-1. same_form - all the body text look similar.
-2. new_form - The old forms page is complete and we are on a new forms page with the body text looking different.
-3. different_page - this is niether the old forms page and not a new forms page as well and is instead something different
+1. same_form - The questions on the page are mostly the same.
+2. new_form - The questions on the page are new.
+3. different_page - This new page text is not questions and are something different.
+4. complete - If you see a message or look within the photo and see that the application is complete and fully submitted mark this as complete.
 
-All text:
-{all_text}
+Look at the image to determine if the application is fully complete and submitted.
 
+Old Page Text: {all_text[0]}
+
+New Page Text: {all_text[1]}
+
+All reasons for choosing a type of form/page so far: {all_reasons}
 Ex 1:
-{{decision: same_form}}
+{{decision: same_form, reason: your reason}}
 
 Ex 2:
-{{decision: new_form}}
+{{decision: new_form, reason: your reason}}
 
 Ex 3:
-{{decision: different_page}}
+{{decision: different_page, reason: your reason}}
+
+Ex 4:
+{{decision: complete, reason: your reason}}
 """
     response = review_question_process_llm3.invoke([
         {
             "role": "user",
             "content": [
-                {"type": "text", "text": prompt}
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
             ]
         }
     ])
@@ -1010,7 +1042,9 @@ Ex 3:
     answers = response["parsed"]
     print(f"Review Answers: {answers}")
     decision = answers["decision"]
-    return state, decision
+    reason = answers["reason"]
+    all_reasons.append(reason)
+    return state, decision, all_reasons
 
 def action_process(ai_answers: list[list], boxes_details: list[dict], state: ApplicationState, full_page_width: int, full_page_height: int, white_x=None, white_y=None, process=None, page_count=None):
     ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "delete": 2, "click": 3, "time": 4, "search": 5, "upload_resume": 6, "upload_cover_letter": 7, "markdown": 8, "click_and_view": 9, "add_more": 10, "submit": 11}.get(x[0].lower(), 999))
@@ -1173,22 +1207,16 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
                 all_pages = context.pages
                 all_pages[-1].close()
     elif action == "white_pixel":
-        pyautogui_image = pyautogui.screenshot(region=(25, 120, full_page_width, 700))
+        if full_page_height >= 700:
+            full_page_height = 700
+        pyautogui_image = pyautogui.screenshot(region=(40, 120, full_page_width, full_page_height))
         buffer = io.BytesIO()
         pyautogui_image.save(buffer, format="PNG")
         pyautogui_bytes = buffer.getvalue()
         encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
-        data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
-        data = response.json()
-        boxes_details = data["boxes_details"]
-        coordinates = []
-        for i in range(len(boxes_details)):
-            current_box = boxes_details[i]
-            coordinate = current_box["bbox"]
-            coordinates.append(coordinate)
-        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, coordinates=coordinates, full_page_width=full_page_width, full_page_height=580)
-        white_x += 25
+        encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(encoded_bytes=encoded_bytes, full_page_width=full_page_width, full_page_height=full_page_height, state=state)
+        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height)
+        white_x += 40
         white_y += 120
         print(f"white x: {white_x}, white y: {white_y}")
         pyautogui.click(x=white_x, y=white_y)
@@ -1518,43 +1546,140 @@ def cropped_image_process(encoded_image1: str, encoded_image2: str, process=None
 
 def time_process(current_question: str, full_page_width: int, page_x: int, page_y: int, state: ApplicationState):
     page = state["current_page"]["page"]
-    state, desired_date, encoded_pyautogui_bytes = text_time_process(current_question=current_question, full_page_width=full_page_width, state=state)
-    state, text_inputted, image1, image2, complete = review_time_process(current_question=current_question, desired_date=desired_date, encoded_pyautogui_bytes=encoded_pyautogui_bytes, state=state)
-    if complete:
-        return state
+    state, desired_date, image1, image2 = text_time_process(current_question=current_question, full_page_width=full_page_width, state=state)
     has_type = False
     active_element = page.locator(":focus")
-    if active_element.count() == 0:
-        active_element = None
-    else:
-        active_element = active_element.first
-    if active_element:
+    print(f"active element 1st: {active_element}")
+    if active_element.count() > 0:
         has_type = active_element.get_attribute("type") in ["date", "month"]
-        if has_type:
-            desired_date = datetime.strptime(desired_date, "%m/%d/%Y").strftime("%Y-%m-%d")
-            active_element.fill(desired_date) 
-            state, text_inputted, image1, image2, complete = review_time_process(current_question=current_question, desired_date=desired_date, encoded_pyautogui_bytes=encoded_pyautogui_bytes, state=state)
-    if complete:
-        return state
-    
-    if text_inputted:
-        if not has_type:
-            state, desired_date, do_not_use_bytes = text_time_process(current_question=current_question, full_page_width=full_page_width, state=state)
-            state, text_inputted, image1, image2, complete = review_time_process(current_question=current_question, desired_date=desired_date, encoded_pyautogui_bytes=encoded_pyautogui_bytes, state=state)
-    
-    if image1 and not image2:
-        page.mouse.click(page_x, page_y)
+    if not has_type:
+        active_element = page.evaluate_handle("document.activeElement")
+        has_type = page.evaluate("""() => ["date", "month"].includes(document.activeElement?.getAttribute("type"))""")
+        active_element = active_element.as_element()
 
-    for attempt in range(4):
-        state, complete = calendar_time_process(current_question=current_question, desired_date=desired_date, image1=image1, image2=image2, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
-        if complete:
-            return state
+    if has_type:
+        print(f"active element: {active_element}")
+        try:
+            desired_date = datetime.strptime(desired_date, "%m/%d/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            try:
+                desired_date = datetime.strptime(desired_date, "%m/%Y").strftime("%Y-%m")
+            except ValueError:
+                desired_date = datetime.strptime(desired_date, "%Y").strftime("%Y")
+        try:
+            active_element.fill(desired_date)
+        except Exception:
+            print("active element filling didn't work")
     
+    previous_attempt = False
+    for attempt in range(4):
+        state, image1, image2, page_x, page_y, previous_attempt, complete = calendar_time_process(current_question=current_question, desired_date=desired_date, image1=image1, image2=image2, full_page_width=full_page_width, page_x=page_x, page_y=page_y, current_attempt=attempt, previous_attempt=previous_attempt, state=state)
+        if complete:
+            break
+    current_answer = ["white_pixel", -1]
+    context = state.get("context")
+    page_count = len(context.pages)
+    state = execute_action(current_answer=current_answer, current_box=-1, full_page_width=full_page_width, full_page_height=600, page_count=page_count, state=state)
     return state
 
-def text_time_process(current_question: str, full_page_width: int, state: ApplicationState):
+def find_time_process(current_question: str, desired_date: str, state: ApplicationState):
     page = state["current_page"]["page"]
-    pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 780))
+    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, coordinates, content])
+    prompt = f"""
+Your job is to the look at the current question, 1st determine if the current question is answered correctly with the Desired Date.
+
+If current question is answered correctly stop and return {{action: None, complete: True}}
+
+If the question is not answered correctly you will look at the current question and click the icon that is the calendar icon or the text space to fill out the question.
+
+Current Question: {current_question}
+
+Desired Date: {desired_date}
+
+Only look at the current 
+
+Look at the page elements and give us the icon that we can click to possibly open up the current question with it being sorted in order.
+
+Look at Page Elements and the image to help find your icon.
+
+
+PAGE ELEMENTS FORMAT
+[icon, type, coordinates, content]
+
+Page Elements: {page_elements}
+
+Action
+click - we will always choose click for our action, this clicks the icon.
+
+Example output 1
+{{
+action: None
+complete: True
+
+The current question matches the desired date and we should return complete.
+}}
+
+Example output 2
+{{
+action: "click"
+icon: 12
+complete: False
+
+The icon that I picked was the calendar icon.
+}}
+
+Example output 3
+{{
+action: "click"
+icon: 48
+complete: False
+
+The icon that I picked was the box/text input for the current question.
+}}
+"""
+    response = find_time_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"find time process answer: {answer}")
+    action = answer.get("action")
+    icon = answer.get("icon")
+    complete = answer.get("complete")
+    if complete:
+        return state, 0, 0, complete
+    current_answer = [action, icon]
+    current_box = boxes_details[icon]
+    bbox = current_box["bbox"]
+    coordinates = [bbox[0], bbox[1], bbox[2], bbox[3]]
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    context = state.get("context")
+    page_count = len(context.pages)
+    page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+    state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    return state, page_x, page_y, complete
+
+def review_find_time_process(current_question: str, full_page_width: int, page_x: int, page_y: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
     buffer = io.BytesIO()
     pyautogui_image.save(buffer, format="PNG")
     pyautogui_bytes = buffer.getvalue()
@@ -1562,7 +1687,121 @@ def text_time_process(current_question: str, full_page_width: int, state: Applic
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
     data = response.json()
-    encoded_pyautogui_bytes = data["encoded_bytes"]
+    pyautogui_encoded_bytes = data["encoded_bytes"]
+    boxes_details = data["boxes_details"]
+    pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=boxes_details)
+
+    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+
+    image2_elements = ""
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinate = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        image2_elements += f"{icon}, {box_type}, {coordinate}, {content}\n"
+
+    prompt = f"""
+You are an AI Applicant Helper in the Review Find Time Process.
+
+Here are your responsibilities:
+
+1. See if image1 has a calendar popup.
+2. See if image2 has a calendar popup.
+3. If both images have no calendar popup, look at past attempts and your current page elements to determine what icon to click within image2.
+
+If both image1 and image2 don't have any calendar popup, look at image2 and Image2 Elements to find the icon to click to open the calendar for the current question.
+
+Current Question: {current_question}
+
+Image2 Elements Format:
+[icon, type, coordinates, content]
+
+Image2 Elements: {image2_elements}
+
+Action Explanation:
+click - We will click the icon that you choose from image2.
+
+Example Output 1:
+
+{{
+    "image1": True,
+    "image2": False
+}}
+
+Image1 had a calendar popup but image2 did not.
+
+Example Output 2:
+
+{{
+    "image1": False,
+    "image2": True
+}}
+
+Image2 had a calendar popup but image1 did not.
+
+Example Output 3:
+
+{{
+    "action": "click",
+    "icon": 74,
+    "image1": False,
+    "image2": False
+}}
+
+Image1 and image2 did not have a calendar popup.
+
+We click icon 74 within image2 of the current question because it was the calendar icon for the current question.
+
+Always choose action click for action in this type of output.
+"""
+    response = review_find_time_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pyautogui_encoded_bytes}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"review find time answer: {answer}")
+    action = answer.get("answer")
+    icon = answer.get("icon")
+    image1 = answer.get("image1")
+    image2 = answer.get("image2")
+    if image1 or image2:
+        return state, image1, image2, page_x, page_y
+    current_answer = [action, icon]
+    current_box = boxes_details[icon]
+    bbox = current_box["bbox"]
+    coordinates = [bbox[0], bbox[1], bbox[2], bbox[3]]
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    context = state.get("context")
+    page_count = len(context.pages)
+    page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+    state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+    return state, image1, image2, page_x, page_y
+
+
+def text_time_process(current_question: str, full_page_width: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
+    buffer = io.BytesIO()
+    pyautogui_image.save(buffer, format="PNG")
+    pyautogui_bytes = buffer.getvalue()
+    encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    data = response.json()
+    pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
     encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
     """decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
@@ -1577,6 +1816,8 @@ Steps to Fill out the time process
 
 current question: {current_question}
 
+You will only be looking at the current question this entire time and will ignore every other question.
+
 Fill current question: {current_question} Time Process.
 1. Find the Current Question we are on and only look at the current question.
 2. Find what position we are highlighted in the current question.
@@ -1586,7 +1827,7 @@ Fill current question: {current_question} Time Process.
 Response Template
 - action: This tells us what action we are going to use to fill this text
 - left_arrow: This tells us how many arrows left we need to move to be at the left most postion
-- text: This is the exact text we will enter to answer the current question by looking at the USER PROFILE.
+- text: This is the exact text we will enter to answer the current question by looking at the USER PROFILE. Always answer in numbers format
 
 Example output 1
 
@@ -1596,6 +1837,8 @@ Example output 1
     "text": "08/21/2026"
 
 We need to move two positions left to be at the left most position. I answered the current question with the user profile and entered the text in the format the current question wants us to give us in.
+
+always answers text in numbers format.
 }}
 
 Example output 2
@@ -1606,6 +1849,8 @@ Example output 2
     "text": "09/2026"
 
 We are currently at the left most position so we need to move 0 spots left. I answered the question exactly with the text that needed to be inputted in the format of the response guidance.
+
+always answers text in numbers format.
 }}
 
 USER PROFILE
@@ -1665,11 +1910,115 @@ Cover Letter:
 
 If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
 """
+    
+    prompt = f"""
+You're an AI Applicant Helper in the Text Time Process.
+
+You have 4 responsibilities.
+
+1. Answer the question.
+2. Determine how many arrow keys we need to move to the left to be at the farthest left point on the current question. Look at what's highlighted within the current question.
+3. Determine if image 1 has a calendar popup.
+4. Determine if image 2 has a calendar popup.
+
+Current Question: {current_question}
+
+IMPORTANT
+
+- Look at the current question to determine if we need to answer with the year, month & year, or day, month & year.
+- Look at the User Profile to answer the question.
+- Look at the images to determine how many arrow keys we need to move to the left to be at the farthest left point of the current question.
+- Always choose the action of "fill".
+- Always have the date be in numbers format.
+
+Example 1
+
+{{
+    "action": "fill",
+    "desired_date": "08/13/2026",
+    "left_arrow": 1,
+    "image1": True,
+    "image2": False
+}}
+
+We answer the question with 08/13/2026 because they are looking for month, day, and year. We need to move one arrow to the left to be at the farthest point to the left to fill in the text. Image 1 has a calendar popup but Image 2 does not have a calendar popup.
+
+Example 2
+
+{{
+    "action": "fill",
+    "desired_date": "08/2028",
+    "left_arrow": 0,
+    "image1": False,
+    "image2": True
+}}
+
+We answered the current question with month and year because that's all the current question is asking for. We are already at the farthest point to the left to answer the question. Image 1 does not have a calendar popup but image 2 does have a calendar popup.
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+last_name={state["last_name"]}
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+
     response = text_time_process_llm2.invoke([
         {
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pyautogui_encoded_bytes}"}},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
             ]
         }
@@ -1677,17 +2026,18 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
-    answers = response["parsed"]
-    print(f"time text answers: {answers}")
-    action = answers.get("action")
-    left_arrow = answers.get("left_arrow")
-    text = answers.get("text")
+    answer = response["parsed"]
+    print(f"time text answers: {answer}")
+    action = answer.get("action")
+    desired_date = answer.get("desired_date")
+    left_arrow = answer.get("left_arrow")
+    image1 = answer.get("image1")
+    image2 = answer.get("image2")
     if action:
         for i in range(left_arrow):
             pyautogui.hotkey("left")
-        page.keyboard.type(text)
-    desired_date = text
-    return state, desired_date, encoded_pyautogui_bytes
+        page.keyboard.type(desired_date)
+    return state, desired_date, image1, image2
 
 def review_time_process(current_question: str, desired_date: str, encoded_pyautogui_bytes: str, state: ApplicationState):
     encoded_bytes, boxes_details, full_page_width, full_height = omniparser_process(state=state)
@@ -1799,13 +2149,34 @@ def day_calculator(current_day: int, current_month: int, current_year: int, desi
 
     return (desired_date - current_date).days
 
-def calendar_time_process(current_question: str, desired_date: str, image1: bool, image2: bool, full_page_width: int, page_x: int, page_y: int, state: ApplicationState):
+def month_calculator(current_month: int, current_year: int, desired_month: int, desired_year: int):
+    return (desired_year - current_year) * 12 + (desired_month - current_month)
+
+def calendar_time_process(current_question: str, desired_date: str, image1: bool, image2: bool, full_page_width: int, page_x: int, page_y: int, current_attempt: int, previous_attempt: False, state: ApplicationState):
     page = state["current_page"]["page"]
-    if image2:
-        encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
-        encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
-    else:
-        pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 780))
+    active_element = page.locator(":focus")
+    print(f"calendar active element: {active_element}")
+    active_element = page.evaluate_handle("document.activeElement")
+    print(f"calendar document active element: {active_element}")
+    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    image1_elements = ""
+    image2_elements = ""
+    if image2 or (not image1 and not image2):
+        for i in range(len(boxes_details)):
+            current_box = boxes_details[i]
+            icon = current_box["icon"]
+            box_type = current_box["type"]
+            bbox = current_box["bbox"]
+            coordinate = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+            content = current_box["content"]
+            image2_elements += f"{icon}, {box_type}, {str(coordinate)}, {content}\n"
+    if image1 and not image2:
+        print("used the page_x and page_y to click the calendar icon for image1")
+        page.mouse.click(page_x, page_y)
+        time.sleep(0.2)
+    if not image2:
+        pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
         buffer = io.BytesIO()
         pyautogui_image.save(buffer, format="PNG")
         pyautogui_bytes = buffer.getvalue()
@@ -1813,125 +2184,159 @@ def calendar_time_process(current_question: str, desired_date: str, image1: bool
         data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
         response = requests.post("http://127.0.0.1:8000/image_process", json=data)
         data = response.json()
-        encoded_bytes = data["encoded_bytes"]
-        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-        buffer = io.BytesIO(decoded_bytes)
-        image = Image.open(buffer)
+        pyautogui_encoded_bytes = data["encoded_bytes"]
         boxes_details = data["boxes_details"]
-        encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+        pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=boxes_details)
+        for i in range(len(boxes_details)):
+            current_box = boxes_details[i]
+            icon = current_box["icon"]
+            box_type = current_box["type"]
+            bbox = current_box["bbox"]
+            coordinate = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+            content = current_box["content"]
+            image1_elements += f"{icon}, {box_type}, {str(coordinate)}, {content}"
         
-
-    page_elements = []
-    for i in range(len(boxes_details)):
-        current_box = boxes_details[i]
-        icon = current_box["icon"]
-        box_type = current_box["type"]
-        bbox = current_box["bbox"]
-        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
-        content = current_box["content"]
-        page_elements.append([icon, box_type, coordinates, content])
     prompt = f"""
-You're an AI Applicant helper in the Calendar Time Process.
+You're an AI Applicant Helper in the Calendar Time Process.
 
-You will only be looking at the current question: {current_question}
+Your job is to determine if the question is correct, find the calendar popup, and determine which icon to click. You will go through the Calendar Time Process to answer this question.
 
-We will try to be getting the desired output in the calendar: {desired_date}
+You will only be looking at the current question this entire time and will ignore every other question.
 
-If you do not see a calendar in the image immediately stop and return
-{{"action": None, "complete": False}}
+Current Question: {current_question}
 
-You will follow the Calendar Time Process to Answer the Question
+Desired Date: {desired_date}
 
 Calendar Time Process
-1. Find the Calendar in the image
-2. Find and mark the current date on the calendar, look at the month, the year, and the highlighted day if present to determine the current day. This is extremely important to know the Current date.
-    - Ex: "08/12/2029"
-    - Ex: "09/2025"
-3. Next look at the desired_date: {desired_date}
-4. If the calendar is in month Format, meaning that it shows all the months of the year follow this.
-    - Determine if our current year matches the desired year.
-    - If our current year does not match the desired year, look at the calendar and find the icon that will move us forward or backward to that desired year
-    - Return something like this {{"action": click_month, "icon": 45, "desired_month": 5, "current_month": 4, current_year: 1998, desired_year: 2052}}
-    - If our current year matches the desired year, then find the icon that will click the month to get us to that desired month.
-    - Return something like this {{"action": click_month, "icon": 45, "desired_month": 10, "current_month": 2, current_year: 2002, desired_year: 2002}}
-5. If the calendar is in day Format, meaning it shows the days of the month follow this.
-    - Return the current day, month, year we are currently at in the calendar popup. Return our desired day, month, year we want to be at
-    - Ex: {{"action": arrow_day, "current_day": 15, desired_day: 30, current_month: 2, desired_month: 11, current_year: 2007, desired_year: 2026}}
 
-Actions Format
-None: this is when you don't see any calendar popup which causes us to click the calendar again.
-click_month: you use this action when you see all the months of the year.
-arrow_day: You use this action when you see the days on the calendar.
+If the question is answered correctly stop and return, {{"action": None, complete: True}}
+
+1. First find the question, if the question is answered correctly stop and return, {{"action": None, "complete": True}}
+2. Next if the question is not correct and there is no calendar popup in the images stop and return, {{"action": None, "complete": False, reason: whatever your reason is and cite the images as your source.}}
+3. Next determine what type of calendar it is between click_day, click_month, click_year.
+4. If the calendar showcases the days that means we are in the click_day calendar.
+5. Click_day, if we are in the desired month and year click the day icon of the desired day.
+6. If we are not in the desired month and year click the arrows to move it to the desired month and year.
+7. If the calendar showcases just the year and the months we are in the click_month calendar.
+8. If we are in the correct year click the correct month for the calendar.
+9. If we are not in the correct year for the calendar click the arrows to move it to the correct year.
+10. If you only see the year in the calendar popup we are in the click_year calendar.
+11. Click the year that matches the desired year or the closest to the desired year as possible.
+
+Action Explanation
+click_day: we choose click_day when we see days inside the calendar popup
+click_month: we choose click_month when we see the year and the months but no days.
+click_year: we choose click_year when we just see the year and no months or days.
+
+
+Use the Page Elements and the images to find your icon.
 
 PAGE ELEMENTS FORMAT
+
 [icon, type, coordinates, content]
 
-Page Elements: {page_elements}
+Image 1 page elements: {image1_elements}
 
-Example output 1
+Image 2 page elements: {image2_elements}
+
+Example 1
+
 {{
-"action": None,
-"complete": False
-
-I saw no calendar pop up in the image so I returned the output no action
+    "action": None,
+    "complete": True
 }}
 
-Example output 2
-{{
-"action": "arrow_day",
-"current_day": 30,
-"desired_day": 12,
-"current_month": 8
-"desired_month": 12
-"current_year": 1997
-"desired_year": 2048
-"complete": False
+The current question is answered correctly.
 
-The calendar shows days with the current day being August 8th 1997 and we are trying to get to the desired date of December 12th 2048.
+Example 2
+
+{{
+    "action": None,
+    "complete": False
 }}
 
-Example output 3
-{{
-"action": "click_month",
-icon: 94,
-"current_month": 8
-"desired_month": 2
-"current_year": 2028,
-"desired_year": 2025
+The current question is answered incorrectly with no calendar popup in the images.
 
-The calendar shows all the months of the year. We need to click the backward arrow to get to the desired year.
+Example 3
+
+{{
+    "action": "click_day",
+    "icon": 88,
+    "current_day": 1,
+    "desired_day": 20,
+    "current_month": 8,
+    "desired_month": 12,
+    "current_year": 2004,
+    "desired_year": 2028,
+    "image2": True
+    complete: False
 }}
 
-Example output 4
+You must have action, icon, current_day, desired_day, current_month, desired_month, current_year, desired_year when doing the click_day.
+
+We will click the arrow icon if the current month and current year don't match the desired month and year.
+
+If the current month and year match the desired month and year we will click the day for the icon.
+
+We are clicking the icon within page 2.
+
+Example 4
+
 {{
-"action": "click_month",
-icon: 112,
-"current_month": 8
-"desired_month": 2
-"current_year": 2025
-"desired_year": 2025
-
-The current year and the desired year are the same. We need to click february to get to our desired month.
+    "action": "click_month",
+    "icon": 55,
+    "current_month": 5,
+    "desired_month": 3,
+    "current_year": 2045,
+    "desired_year": 2025,
+    "image1": True
+    complete: False
 }}
+You must have action, icon, current_month, desired_month, current_year, desired_year when doing the click_month.
 
-Example output 5
+If the current year and desired year match, click the desired month icon. If the current year and desired year don't match then click the arrow icon that will move us in the direction to the desired year.
+
+We are clicking the icon within image 1 page elements.
+
+Example 5
+
 {{
-"action": "white_pixel",
-"icon": -1,
-"complete": True
-
-The desired date matches the current date so we choose the white_pixel action which always uses the -1 icon.
+    "action": "click_year",
+    "icon": 28,
+    "current_year": 2028,
+    "desired_year": 2024,
+    "image2": True
+    complete: False
 }}
+You must have action, icon, current_year, desired_year when doing the click_year.
+
+We will always click the icon that matches the desired year and if you don't see the desired year click the icon that is the closest to the desired year.
+
+We are clicking the icon within image 2 page elements.
+
 """
-    response = calendar_time_process_llm2.invoke([
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
-            ]
-        }
-    ])
+
+    if image2:
+        response = calendar_time_process_llm2.invoke([
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                ]
+            }
+        ])
+    else:
+        response = calendar_time_process_llm2.invoke([
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pyautogui_encoded_bytes}"}},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                ]
+            }
+        ])
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -1945,76 +2350,118 @@ The desired date matches the current date so we choose the white_pixel action wh
     desired_month = answer.get("desired_month")
     desired_year = answer.get("desired_year")
     complete = answer.get("complete")
+    image1 = answer.get("image1")
+    image2 = answer.get("image2")
     print(f"calendar time answer: {answer}")
+    if complete:
+        previous_attempt = False
+        return state, image1, image2, page_x, page_y, previous_attempt, complete
+    if not action and not complete:
+        print("going to use find time and review time process")
+        previous_attempt = True
+        state, page_x, page_y, complete = find_time_process(current_question=current_question, desired_date=desired_date, state=state)
+        if complete:
+            return state, image1, image2, page_x, page_y, previous_attempt, complete
+        state, image1, image2, page_x, page_y = review_find_time_process(current_question=current_question, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
+        if not image1 and not image2:
+            state, image1, image2, page_x, page_y = review_find_time_process(current_question=current_question, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
+        return state, image1, image2, page_x, page_y, previous_attempt, complete
     if action:
-        state = calendar_action_process(action=action, icon=icon, current_day=current_day, current_month=current_month, current_year=current_year, desired_day=desired_day, desired_month=desired_month, desired_year=desired_year, boxes_details=boxes_details, image2=image2, full_page_width=full_page_width, state=state)
-    return state, complete
+        state = calendar_action_process(action=action, icon=icon, current_day=current_day, current_month=current_month, current_year=current_year, desired_day=desired_day, desired_month=desired_month, desired_year=desired_year, boxes_details=boxes_details, image2=image2, full_page_width=full_page_width, current_attempt=current_attempt, previous_attempt=previous_attempt, state=state)
+    previous_attempt = False
+    return state, image1, image2, page_x, page_y, previous_attempt, complete
 
-def calendar_action_process(boxes_details: list[dict], full_page_width: int, image2: bool, state: ApplicationState, action=None, icon=None, current_day=None, current_month=None, current_year=None, desired_day=None, desired_month=None, desired_year=None):
+def calendar_action_process(boxes_details: list[dict], full_page_width: int, image2: bool, current_attempt: int, state: ApplicationState, action=None, icon=None, current_day=None, current_month=None, current_year=None, desired_day=None, desired_month=None, desired_year=None, previous_attempt=None):
+    print(f"calendar attempt: {current_attempt}")
+    print(f"image2 yes or no: {image2}")
     page = state["current_page"]["page"]
     context = state.get("context")
     page_count = len(context.pages)
-    if action == "click_month":
+    active_element = page.locator(":focus")
+    has_type = False
+    if active_element.count() > 0:
+        has_type = active_element.get_attribute("type") in ["date", "month"]
+    if not has_type:
+        active_element = page.evaluate_handle("document.activeElement")
+        try:
+            has_type = page.evaluate("""() => ["date", "month"].includes(document.activeElement?.getAttribute("type"))""")
+        except Exception:
+            has_type = False
+    if action != "white_pixel":
         current_box = boxes_details[icon]
         coordinates = current_box["bbox"]
         if image2:
+            print("coordinates processed used for playwright")
             full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
             page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
         else:
-            page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=740)
+            print("coordinates processed used for pyautogui")
+            page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=870)
             page_x += 10
-            page_y += 70
-    if action == "white_pixel":
-        current_answer = [action, -1]
-        full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
-        state = execute_action(current_answer=current_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
-    elif action == "click_month":
-        years_apart = desired_year - current_year
-        if years_apart != 0:
-            if image2:
-                for i in range(abs(years_apart)):
+            page_y += 40
+    if action == "click_day":
+        if current_attempt == 0 or (previous_attempt and not image2) or has_type:
+            days_apart = day_calculator(current_day=current_day, current_month=current_month, current_year=current_year,desired_day=desired_day, desired_month=desired_month, desired_year=desired_year)
+            if days_apart > 0:
+                for i in range(days_apart):
+                    page.keyboard.press("ArrowRight")
+            elif days_apart < 0:
+                for i in range(abs(days_apart)):
+                    page.keyboard.press("ArrowLeft")
+        else:
+            if current_month == desired_month and current_year == desired_year:
+                if image2:
+                    page.mouse.click(page_x, page_y)
+                else:
+                    print("using pyautogui to click a day")
                     pyautogui.click(page_x, page_y)
             else:
+                months_apart = month_calculator(current_month=current_month, current_year=current_year, desired_month=desired_month, desired_year=desired_year)
+                if image2:
+                    for i in range(abs(months_apart)):
+                        page.mouse.click(page_x, page_y)
+                else:
+                    for i in range(abs(months_apart)):
+                        pyautogui.click(page_x, page_y)
+    elif action == "click_month":
+        years_apart = desired_year - current_year
+        if current_attempt == 0 or (previous_attempt and not image2) or has_type:
+            total_months = month_calculator(current_month=current_month, current_year=current_year, desired_month=desired_month, desired_year=desired_year)
+            if total_months > 0:
+                for i in range(total_months):
+                    pyautogui.hotkey("right")
+            else:
+                for i in range(abs(total_months)):
+                    pyautogui.hotkey("left")
+        elif years_apart != 0:
+            if image2:
                 for i in range(abs(years_apart)):
                     page.mouse.click(page_x, page_y)
+            else:
+                for i in range(abs(years_apart)):
+                    pyautogui.click(page_x, page_y)
+        else:
+            print("clicking month")
+            if image2:
+                print("used playwright for click")
+                page.mouse.click(page_x, page_y)
+            else:
+                print("used pyautogui for click")
+                pyautogui.click(page_x, page_y)
+    elif action == "click_year":
+        total_click = abs(desired_year - current_year)
+        if current_attempt == 0 or (previous_attempt and not image2):
+            if image2:
+                for i in range(total_click):
+                    page.keyboard.press("ArrowRight")
+            else:
+                for i in range(total_click):
+                    pyautogui.click(page_x, page_y)
         else:
             if image2:
-                pyautogui.click(page_x, page_y)
+                page.mouse.click(page_x, page_y)
             else:
-                page.mouse.click(page_x, page_y)
-    elif action == "arrow_day":
-        days_apart = day_calculator(current_day=current_day, current_month=current_month, current_year=current_year, desired_day=desired_day, desired_month=desired_month, desired_year=desired_year)
-        if days_apart > 0:
-            for i in range(days_apart):
-                pyautogui.hotkey("right")
-        elif days_apart < 0:
-            for i in range(abs(days_apart)):
-                pyautogui.hotkey("left")
-    elif action == "arrow_month":
-        total_click = (desired_year - current_year) * 12
-        if total_click > 0:
-            total_click += (desired_month - current_month)
-        elif total_click == 0:
-            total_click += abs(desired_month - current_month)
-        else:
-            total_click = abs(total_click)
-            total_click += (current_month - desired_month)
-        if image2:
-            for i in range(total_click):
-                page.mouse.click(page_x, page_y)
-        else:  
-            for i in range(total_click):
                 pyautogui.click(page_x, page_y)
-    elif action == "arrow_year":
-        total_click = abs(desired_year - current_year)
-        if image2:
-            for i in range(total_click):
-                page.mouse.click(page_x, page_y)
-        else:
-            for i in range(total_click):
-                pyautogui.click(page_x, page_y)
-            
-
     return state
 
 def markdown_process(current_answer: dict, encoded_pyautogui_bytes1: str, old_bytes: str, body_text: str, page_x: float, page_y: float, state: ApplicationState, white_x=None, white_y=None):
@@ -2249,12 +2696,7 @@ Why we did that: There is currently no highlighted option in the photo and we ne
         else:
             continue
     encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
-    coordinates = []
-    for i in range(len(boxes_details)):
-        current_box = boxes_details[i]
-        coordinate = current_box["bbox"]
-        coordinates.append(coordinate)
-    white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+    white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height)
     if white_x and white_y:
         page.mouse.click(white_x, white_y)
         time.sleep(2)
@@ -2838,6 +3280,9 @@ complete: True
 def markdown_action(current_answer: list, boxes_details: list[dict], full_page_width: int, full_page_height: int, page_count: int, state: ApplicationState):
     print(f"current markdown answer: {current_answer}")
     action = current_answer[0]
+    if action == "arrow":
+        state = execute_action(current_answer=current_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+        return state
     icon = current_answer[1]
     current_box = boxes_details[icon]
     state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
@@ -2850,7 +3295,7 @@ def search_process(all_text: list[str], current_question: str, ai_answers: list[
     complete = False
     current_text = all_text[0]
     print(f"answers: {all_text}")
-    for attempt in range(6):
+    for attempt in range(4):
         pyautogui.hotkey("enter")
         time.sleep(4)
         pyautogui.hotkey("down")
@@ -2867,11 +3312,13 @@ def search_process(all_text: list[str], current_question: str, ai_answers: list[
         pyautogui_encoded_bytes = response["encoded_bytes"]
         pyautogui_boxes_details = response["boxes_details"]
         pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=pyautogui_boxes_details)
+        body_text = page.locator("body").inner_text()
         prompt = f"""
 Your an AI applicant helper whose job is to help us out in the search process.
 We have just entered some text and your job is to tell us one of a few things. 
 Only look at the current question and ignore the rest, our job is to only answer the current question.
 current_question: {current_question}
+Body Text: {body_text}
 
 Go through the Search Question Process to answer the question.
 
@@ -2903,6 +3350,7 @@ Example 1
 action: "arrow"
 current_option: 4
 option_choice: 6
+all_options: [Alabama, Arkansas, california, mississippi, south carolina, north carlolina]
 }}
 
 Example 2
@@ -2910,6 +3358,7 @@ Example 2
 action: "arrow"
 current_option: 0
 option_choice: 6
+all_options: [Alabama, Arkansas, california, mississippi, south carolina, north carlolina]
 }}
 
 Example 3
@@ -3550,12 +3999,8 @@ def click_and_view_process(state: ApplicationState):
             coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4),]
             page_elements.append([current_box["icon"], current_box["type"], coordinates, current_box["content"]])
 
-        coordinates = []
 
-        for current_box in boxes_details:
-            coordinates.append(current_box["bbox"])
-
-        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height)
 
         prompt = f"""
 You are an AI job-application assistant completing fields revealed by an
@@ -3584,13 +4029,12 @@ HOW THIS PROCESS WORKS
 ACTIONS
 skip: No change needed or question should be skipped.
 fill: Fill an empty input. Requires action_text + icon.
-fill_with_time: Fill a date/time input. Requires action_text + icon.
+time: Any question that has anything to due with time. Requires icon + current_question.
 delete: Clear incorrect/unwanted text. Requires icon.
-delete_and_fill: Replace existing text. Requires action_text + icon.
 click: Select/unselect an immediately answerable option. Requires icon.
+search: When you need to search something or enter skills that could possibly add suggested drop downs, search texts must always be one word.
 upload_resume: Resume upload field. Requires icon.
 upload_cover_letter: Cover-letter upload field. Requires icon.
-click_and_view: Click only when it reveals additional fields/questions that must be completed. Requires icon + question.
 markdown: Dropdown/combobox/menu requiring option discovery and selection. Requires icon + current_question.
 add_more: add another option will add more items for examples like add more education, add more experience, things of that nature
 
@@ -3601,24 +4045,24 @@ Page Elements format
 PAGE ELEMENTS
 {page_elements}
 
-ITEMS ELEMENTS
-
-ACTIONS
+Actions Format
 skip: [action]
 
 fill: [action, icon, action_text]
 
-fill_with_time: [action, icon, action_text]
-
 delete: [action, icon]
 
-delete_and_fill: [action, icon, action_text]
-
 click: [action, icon]
+
+time: [action, icon, current_question]
+
+search: [action, icon, current_question, list of text]
 
 upload_resume: [action, icon]
 
 upload_cover_letter: [action, icon]
+
+click_and_view: [action, icon, current_question]
 
 markdown: [action, icon, current_question]
 
@@ -3627,7 +4071,7 @@ add_more: [action, icon, submit_text]
 
 Example:
 
-items: [["skip"], ["fill", 28, {state["email"]}], ["fill_with_time", 35, "08/01/2020"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["upload_resume", 50], ["upload_cover_letter", 52], ["markdown", 60, "What U.S. State are you in?"], ["add_more", 30]]
+items: [["skip"], ["fill", 28, {state["email"]}], ["time", 35, "When do you graduate?"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["search", ["python", "playwright", "java"]], ["search", 8, "What skills do you have", ["skill 1", "skill 2", "skill 3"]], ["upload_resume", 50], ["upload_cover_letter", 52], ["click_and_view", 22, "Add More Work Experience"], ["markdown", 60, "What U.S. State are you in?"], ["add_more", 30]]
 
 USER PROFILE
 Account:
@@ -3951,8 +4395,8 @@ def load_test_user(state: ApplicationState):
     state["github_url"] = "https://github.com/johndoe"
     state["portfolio_url"] = "https://johndoe.dev"
     state["date"] = "August 8th 2025"
-    state["work_experience"] = [{"company": "google", "position": "software engineer intern", "start_date": "May 6th 2026", "end_date": "August 8th 2026"}]
-    state["education"] = [{"school": "UNC Charlotte", "major": "computer science", "start_date": "August 16 2025", "end_date": "May 5th 2029"}]
+    state["work_experience"] = [{"company": "google", "position": "software engineer intern", "start_date": "May 2026", "end_date": "August 2026"}]
+    state["education"] = [{"school": "UNC Charlotte", "major": "computer science", "start_date": "August 2025", "end_date": "May 2029"}, {"school": "UNC", "major": "mechanical engineer", "start_date": "August 2029", "end_date": "May 2033"}]
 
 
     state["resume_text"] = """
@@ -4017,10 +4461,10 @@ graph.add_node("load_test_user", load_test_user)
 
 graph.add_edge(START, "load_test_user")
 graph.add_edge("load_test_user", "decide_page")
-graph.add_conditional_edges("decide_page", decide_routing, {"cookies": "cookies_process", "apply": "apply_process", "signup": "signup_process", "forms": "signup_process", "wait": "wait_process", "exit": END})
+graph.add_conditional_edges("decide_page", decide_routing, {"cookies": "cookies_process", "apply": "apply_process", "signup": "signup_process", "forms": "signup_process", "wait": "wait_process", "complete": END, "exit": END})
 graph.add_edge("cookies_process", "decide_page")
 graph.add_edge("apply_process", "decide_page")
-graph.add_conditional_edges("signup_process", signup_routing, {"max_tries": END, "total_cost": END, "new_form": "signup_process", "different_page": "decide_page", "decide_page": "decide_page"})
+graph.add_conditional_edges("signup_process", signup_routing, {"max_tries": END, "total_cost": END, "complete": END, "new_form": "signup_process", "different_page": "decide_page", "decide_page": "decide_page"})
 graph.add_edge("wait_process", "decide_page")
 graph.add_conditional_edges("wait_process", wait_routing, {"continue": "decide_page", "exit": END})
 
