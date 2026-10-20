@@ -50,6 +50,18 @@ class AnswerItem(TypedDict):
     answer_text: str
     reason: Annotated[str, "Maximum 5 words."]
 
+class ExtraStepsProcess(TypedDict):
+    action: str
+    action_type: str | None
+    icon: int | None
+    current_option: int | None
+    option_choice: int | None
+    text_options: list[str] | None
+    desired_date: str | None
+    left_arrow: int | None
+    image1: bool | None
+    image2: bool | None
+
 class FindIcon(TypedDict):
     icon: int
     icon_reason: Annotated[str, "Maximum 5 words."]

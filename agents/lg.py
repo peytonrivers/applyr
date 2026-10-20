@@ -22,7 +22,7 @@ import json
 import time
 import base64
 from datetime import datetime
-from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, FindTimeProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess, ReviewFindTimeProcess
+from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, FindTimeProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess, ReviewFindTimeProcess, ExtraStepsProcess
 import io
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -86,12 +86,13 @@ review_find_time_process_llm2 = llm2.with_structured_output(ReviewFindTimeProces
 text_time_process_llm2 = llm2.with_structured_output(TextTimeProcess, include_raw=True)
 review_time_process_llm2 = llm2.with_structured_output(ReviewTimeProcess, include_raw=True)
 calendar_time_process_llm2 = llm2.with_structured_output(CalendarTimeProcess, include_raw=True)
+extra_steps_process_llm2 = llm2.with_structured_output(ExtraStepsProcess, include_raw=True)
 
 url = "https://www.allstate.jobs/job/23890328/software-engineering-manager-java-/"
 url = "https://www.allstate.jobs/job/23927829/software-engineer-all-levels-/"
-# url = "https://testing-kohl-psi.vercel.app/"
-url = "https://apply.deloitte.com/en_US/careers/InviteToApply?jobId=350244&source=LinkedIn"
-url = "https://job-boards.greenhouse.io/embed/job_app?token=8003605&for=coinbase&gh_src=wvu4737r1us&gh_jid=8003605"
+url = "https://testing-kohl-psi.vercel.app/"
+# url = "https://apply.deloitte.com/en_US/careers/InviteToApply?jobId=350244&source=LinkedIn"
+# url = "https://job-boards.greenhouse.io/embed/job_app?token=8003605&for=coinbase&gh_src=wvu4737r1us&gh_jid=8003605"
 print(url.title)
 model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000], ["gpt-6-luna", 0.10 / 1000000, 0.50 / 1000000, 0.01 / 1000000]]
 
@@ -333,11 +334,16 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
         page = state["current_page"]["page"]
         full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
         encoded_bytes, full_page_width, full_page_height = screenshot_process(state)
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    image.show()
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]
+    print(f"boxes details: {boxes_details}")
     return encoded_bytes, boxes_details, full_page_width, full_page_height
 
 def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
@@ -372,6 +378,610 @@ def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
     new_image_bytes = new_image_buffer.getvalue()
     encoded_bytes = base64.b64encode(new_image_bytes).decode("utf-8")
     return encoded_bytes
+
+
+def pixel_image_cropping(encoded_bytes1: int, encoded_bytes2: int, full_page_width=None, top_height1=None, bottom_height1=None, top_height2=None, bottom_height2=None):
+
+    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
+    buffer = io.BytesIO(buffer)
+    image1 = Image.open(buffer)
+    image1_height, image1_width = image1.size
+    image1_matrix = np.array(image1)
+
+    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image2 = Image.open(buffer)
+    image2_height, image2_width = image2.size
+    image2_matrix = np.array(image2)
+
+    cutoff_top_height = 0
+    cutoff_bottom_height = 0
+
+    if not top_height1:
+        for i in range(len(image1_matrix)):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[I]
+            for j in range(len(image1_row)):
+                image1_pixel = image1_row[j]
+                image2_pixel = image2_row[j]
+                if image1_pixel != image2_pixel:
+                    cutoff_top_height = i
+                    break
+
+        for i in range(len(image1_matrix, 0, -1)):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[I]
+            for j in range(len(image1_row)):
+                image1_pixel = image1_row[j]
+                image2_pixel = image2_row[j]
+                if image1_pixel != image2_pixel:
+                    cutoff_bottom_height = i
+                    break
+    else:
+        image1_top_difference = image1_height - top_height1
+        image2_top_difference = image2_height - top_height2
+
+        if image1_top_difference > image2_top_difference:
+            for I in range(len(top_height1, image1_height)):
+                image1_row = image1_matrix[i]
+                image2_row = image2_matrix[top_height2]
+                for j in range(len(image1_row)):
+                    image1_pixel = image1_row[j]
+                    image2_pixel = image2_row[j]
+                    if image1_pixel != image2_pixel:
+                        cutoff_top_height = top_height2
+                        break
+                top_height2 += 1
+        else:
+            for I in range(len(top_height2, image2_height)):
+                image1_row = image1_matrix[top_height1]
+                image2_row = image2_matrix[I]
+                for j in range(len(image1_row)):
+                    image1_pixel = image1_row[j]
+                    image2_pixel = image2_row[j]
+                    if image1_pixel != image2_pixel:
+                        cutoff_top_height = i
+                        break
+                top_height1 += 1
+
+        if bottom_height1 > bottom_height2:
+            for I in range(len(bottom_height1, 0, -1)):
+                image1_row = image1_matrix[i]
+                image2_row = image2_matrix[bottom_height2]
+                for j in range(len(image1_row)):
+                    image1_pixel = image1_row[j]
+                    image2_pixel = image2_row[j]
+                    if image1_pixel != image2_pixel:
+                        cutoff_top_height = bottom_height2
+                        break
+                bottom_height2 -= 1
+        else:
+            for I in range(len(bottom_height2, 0, -1)):
+                image1_row = image1_matrix[bottom_height1]
+                image2_row = image2_matrix[I]
+                for j in range(len(image1_row)):
+                    image1_pixel = image1_row[j]
+                    image2_pixel = image2_row[j]
+                    if image1_pixel != image2_pixel:
+                        cutoff_bottom_height = i
+                        break
+                bottom_height1 -= 1
+
+    if cutoff_top_height != 0 or cutoff_bottom_height != 0:
+        cropped_image = image2.crop((0, cutoff_top_height, full_page_width, cutoff_bottom_height))
+        buffer = io.BytesIO()
+        cropped_image.save(buffer, format="PNG")
+        decoded_bytes = buffer.getvalue()
+        encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
+        return encoded_bytes
+    else:
+        return encoded_bytes2
+
+
+def pixel_image_cropping(
+    encoded_bytes1: str,
+    encoded_bytes2: str,
+    full_page_width=None,
+    top_height1=None,
+    bottom_height1=None,
+    top_height2=None,
+    bottom_height2=None
+):
+
+    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image1 = Image.open(buffer)
+    image1_width, image1_height = image1.size
+    image1_matrix = np.array(image1)
+
+    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image2 = Image.open(buffer)
+    image2_width, image2_height = image2.size
+    image2_matrix = np.array(image2)
+
+    if full_page_width is None:
+        full_page_width = image2_width
+
+    # Compare complete images when no anchor points are provided.
+    if top_height1 is None:
+
+        cutoff_top_height = None
+        cutoff_bottom_height = None
+
+        comparison_height = min(image1_height, image2_height)
+
+        # Search from the top.
+        for i in range(comparison_height):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[i]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_top_height = i
+                break
+
+        # Search from the bottom.
+        for i in range(comparison_height - 1, -1, -1):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[i]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_bottom_height = i + 1
+                break
+
+        if cutoff_top_height is None or cutoff_bottom_height is None:
+            return encoded_bytes2
+
+    else:
+
+        # Use the original image 2 anchor points as fallbacks.
+        cutoff_top_height = top_height2
+        cutoff_bottom_height = bottom_height2
+
+        if any(
+            value is None
+            for value in (
+                top_height1,
+                top_height2,
+                bottom_height1,
+                bottom_height2
+            )
+        ):
+            return encoded_bytes2
+
+        # TOP: Search downward from matching top anchors.
+        top_steps = min(
+            image1_height - top_height1,
+            image2_height - top_height2
+        )
+
+        for offset in range(top_steps):
+            image1_row = image1_matrix[top_height1 + offset]
+            image2_row = image2_matrix[top_height2 + offset]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_top_height = top_height2 + offset
+                break
+
+        # BOTTOM: Search upward from matching bottom anchors.
+        bottom_steps = min(
+            bottom_height1 + 1,
+            bottom_height2 + 1
+        )
+
+        for offset in range(bottom_steps):
+            image1_row = image1_matrix[bottom_height1 - offset]
+            image2_row = image2_matrix[bottom_height2 - offset]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_bottom_height = bottom_height2 - offset + 1
+                break
+
+    # Keep the cropping coordinates inside image 2.
+    cutoff_top_height = max(
+        0, min(image2_height, cutoff_top_height)
+    )
+    cutoff_bottom_height = max(
+        0, min(image2_height, cutoff_bottom_height)
+    )
+
+    if cutoff_top_height >= cutoff_bottom_height:
+        return encoded_bytes2
+
+    cropped_image = image2.crop(
+        (
+            0,
+            cutoff_top_height,
+            min(full_page_width, image2_width),
+            cutoff_bottom_height
+        )
+    )
+
+    buffer = io.BytesIO()
+    cropped_image.save(buffer, format="PNG")
+
+    decoded_bytes = buffer.getvalue()
+    encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
+
+    return encoded_bytes
+
+
+
+
+import base64
+import io
+import numpy as np
+from PIL import Image
+
+
+def pixel_image_cropping(
+    encoded_bytes1: str,
+    encoded_bytes2: str,
+    full_page_width=None,
+    top_height1=None,
+    bottom_height1=None,
+    top_height2=None,
+    bottom_height2=None
+):
+
+    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image1 = Image.open(buffer)
+    image1_width, image1_height = image1.size
+    image1_matrix = np.array(image1)
+
+    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image2 = Image.open(buffer)
+    image2_width, image2_height = image2.size
+    image2_matrix = np.array(image2)
+
+    if full_page_width is None:
+        full_page_width = image2_width
+
+    # FULL IMAGE PIXEL COMPARISON
+
+    if top_height1 is None:
+
+        cutoff_top_height = None
+        cutoff_bottom_height = None
+
+        comparison_height = min(image1_height, image2_height)
+
+        for i in range(comparison_height):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[i]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_top_height = i
+                break
+
+        for i in range(comparison_height - 1, -1, -1):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[i]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_bottom_height = i + 1
+                break
+
+        if cutoff_top_height is None or cutoff_bottom_height is None:
+            return encoded_bytes2
+
+    # BOUNDING BOX ANCHOR PIXEL COMPARISON
+
+    else:
+
+        cutoff_top_height = top_height2
+        cutoff_bottom_height = bottom_height2
+
+        if any(
+            value is None
+            for value in (
+                top_height1,
+                top_height2,
+                bottom_height1,
+                bottom_height2
+            )
+        ):
+            return encoded_bytes2
+
+        top_steps = min(
+            image1_height - top_height1,
+            image2_height - top_height2
+        )
+
+        for offset in range(top_steps):
+            image1_row = image1_matrix[top_height1 + offset]
+            image2_row = image2_matrix[top_height2 + offset]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_top_height = top_height2 + offset
+                break
+
+        bottom_steps = min(
+            bottom_height1 + 1,
+            bottom_height2 + 1
+        )
+
+        for offset in range(bottom_steps):
+            image1_row = image1_matrix[bottom_height1 - offset]
+            image2_row = image2_matrix[bottom_height2 - offset]
+
+            if not np.array_equal(image1_row, image2_row):
+                cutoff_bottom_height = bottom_height2 - offset + 1
+                break
+
+    cutoff_top_height = max(
+        0, min(image2_height, cutoff_top_height)
+    )
+    cutoff_bottom_height = max(
+        0, min(image2_height, cutoff_bottom_height)
+    )
+
+    if cutoff_top_height >= cutoff_bottom_height:
+        return encoded_bytes2
+
+    cropped_image = image2.crop(
+        (
+            0,
+            cutoff_top_height,
+            min(full_page_width, image2_width),
+            cutoff_bottom_height
+        )
+    )
+
+    buffer = io.BytesIO()
+    cropped_image.save(buffer, format="PNG")
+
+    decoded_bytes = buffer.getvalue()
+    encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
+
+    return encoded_bytes
+
+
+def cropped_image(
+    encoded_bytes1: str,
+    encoded_bytes2: str,
+    boxes_details1: list[dict],
+    boxes_details2: list[dict],
+    cut_off_height: int,
+    full_page_width: int,
+    full_page_height: int,
+    state: "ApplicationState",
+    cuttoff_height=None
+):
+
+    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image1 = Image.open(buffer)
+    image1_width, image1_height = image1.size
+    image1_matrix = np.array(image1)
+
+    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image2 = Image.open(buffer)
+    image2_width, image2_height = image2.size
+    image2_matrix = np.array(image2)
+
+    page = state["current_page"]["page"]
+
+    current_height = page.evaluate("""() => {
+        return Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight,
+            document.body.offsetHeight,
+            document.documentElement.offsetHeight,
+            document.body.clientHeight,
+            document.documentElement.clientHeight
+        );
+    }""")
+
+    if current_height != full_page_height:
+
+        above_list1 = []
+        below_list1 = []
+        above_list2 = []
+        below_list2 = []
+
+        for i in range(len(boxes_details1)):
+            current_box = boxes_details1[i]
+            content = current_box["content"]
+            bbox = current_box["bbox"]
+
+            current_box_height = full_page_height * (
+                (bbox[1] + bbox[3]) / 2
+            )
+
+            if current_box_height > cut_off_height:
+                below_list1.append(
+                    [current_box_height, content, current_box]
+                )
+            else:
+                above_list1.append(
+                    [current_box_height, content, current_box]
+                )
+
+        for l in range(len(boxes_details2)):
+            current_box = boxes_details2[l]
+            content = current_box["content"]
+            bbox = current_box["bbox"]
+
+            current_box_height = current_height * (
+                (bbox[1] + bbox[3]) / 2
+            )
+
+            if current_box_height > cut_off_height:
+                below_list2.append(
+                    [current_box_height, content, current_box]
+                )
+            else:
+                above_list2.append(
+                    [current_box_height, content, current_box]
+                )
+
+        below_list1.sort(key=lambda x: x[0])
+        below_list2.sort(key=lambda x: x[0])
+        above_list1.sort(key=lambda x: x[0], reverse=True)
+        above_list2.sort(key=lambda x: x[0], reverse=True)
+
+        top_height1 = None
+        top_height2 = None
+        bottom_height1 = None
+        bottom_height2 = None
+
+        top_finished = False
+        bottom_finished = False
+
+        # TOP BOUNDING BOX MATCHING
+
+        for i in range(len(above_list1)):
+            if top_finished:
+                break
+
+            first_content = above_list1[i][1]
+
+            for l in range(len(above_list2)):
+                if top_finished:
+                    break
+
+                second_content = above_list2[l][1]
+
+                if first_content == second_content:
+                    first_box = above_list1[i][2]
+                    second_box = above_list2[l][2]
+
+                    temp_top_height1 = round(
+                        image1_height * (
+                            (first_box["bbox"][1] + first_box["bbox"][3]) / 2
+                        )
+                    )
+
+                    temp_top_height2 = round(
+                        image2_height * (
+                            (second_box["bbox"][1] + second_box["bbox"][3]) / 2
+                        )
+                    )
+
+                    temp_top_height1 = max(
+                        0, min(image1_height - 1, temp_top_height1)
+                    )
+                    temp_top_height2 = max(
+                        0, min(image2_height - 1, temp_top_height2)
+                    )
+
+                    first_row = image1_matrix[temp_top_height1]
+                    second_row = image2_matrix[temp_top_height2]
+
+                    if np.array_equal(first_row, second_row):
+                        top_height1 = temp_top_height1
+                        top_height2 = temp_top_height2
+                        top_finished = True
+                        break
+
+                    start = max(0, temp_top_height2 - 5)
+                    end = min(image2_height, temp_top_height2 + 6)
+
+                    for j in range(start, end):
+                        second_row = image2_matrix[j]
+
+                        if np.array_equal(first_row, second_row):
+                            top_height1 = temp_top_height1
+                            top_height2 = j
+                            top_finished = True
+                            break
+
+        # BOTTOM BOUNDING BOX MATCHING
+
+        for i in range(len(below_list1)):
+            if bottom_finished:
+                break
+
+            first_content = below_list1[i][1]
+
+            for l in range(len(below_list2)):
+                if bottom_finished:
+                    break
+
+                second_content = below_list2[l][1]
+
+                if first_content == second_content:
+                    first_box = below_list1[i][2]
+                    second_box = below_list2[l][2]
+
+                    temp_bottom_height1 = round(
+                        image1_height * (
+                            (first_box["bbox"][1] + first_box["bbox"][3]) / 2
+                        )
+                    )
+
+                    temp_bottom_height2 = round(
+                        image2_height * (
+                            (second_box["bbox"][1] + second_box["bbox"][3]) / 2
+                        )
+                    )
+
+                    temp_bottom_height1 = max(
+                        0, min(image1_height - 1, temp_bottom_height1)
+                    )
+                    temp_bottom_height2 = max(
+                        0, min(image2_height - 1, temp_bottom_height2)
+                    )
+
+                    first_row = image1_matrix[temp_bottom_height1]
+                    second_row = image2_matrix[temp_bottom_height2]
+
+                    if np.array_equal(first_row, second_row):
+                        bottom_height1 = temp_bottom_height1
+                        bottom_height2 = temp_bottom_height2
+                        bottom_finished = True
+                        break
+
+                    start = max(0, temp_bottom_height2 - 5)
+                    end = min(image2_height, temp_bottom_height2 + 6)
+
+                    for j in range(start, end):
+                        second_row = image2_matrix[j]
+
+                        if np.array_equal(first_row, second_row):
+                            bottom_height1 = temp_bottom_height1
+                            bottom_height2 = j
+                            bottom_finished = True
+                            break
+
+        # CALL PIXEL IMAGE CROPPING WITH MATCHED ANCHORS
+
+        if (
+            top_finished
+            and bottom_finished
+            and top_height1 < bottom_height1
+            and top_height2 < bottom_height2
+        ):
+            return pixel_image_cropping(
+                encoded_bytes1=encoded_bytes1,
+                encoded_bytes2=encoded_bytes2,
+                full_page_width=full_page_width,
+                top_height1=top_height1,
+                bottom_height1=bottom_height1,
+                top_height2=top_height2,
+                bottom_height2=bottom_height2
+            )
+
+        # FALLBACK WHEN BOUNDING BOX MATCHING FAILS
+
+        return pixel_image_cropping(
+            encoded_bytes1=encoded_bytes1,
+            encoded_bytes2=encoded_bytes2,
+            full_page_width=full_page_width
+        )
+
+    else:
+        print("going through pixel process normally")
+
+        return pixel_image_cropping(
+            encoded_bytes1=encoded_bytes1,
+            encoded_bytes2=encoded_bytes2,
+            full_page_width=full_page_width
+        )
 
 
 def decide_page(state: ApplicationState):
@@ -1543,6 +2153,200 @@ def cropped_image_process(encoded_image1: str, encoded_image2: str, process=None
         boxes_details[i]["bbox"][3] = updated_ratio_y2
     print("Normal cropped image process")
     return encoded_bytes, boxes_details, encoded_cropped_bytes
+
+def extra_steps_process(current_question: str, state: ApplicationState, encoded_bytes=None):
+    page = state["current_page"]["page"]
+    pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
+    buffer = io.BytesIO()
+    pyautogui_image.save(buffer, format="PNG")
+    pyautogui_bytes = buffer.getvalue()
+    encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    data = response.json()
+    pyautogui_encoded_bytes = data["encoded_bytes"]
+    boxes_details = data["boxes_details"]
+    pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=boxes_details)
+    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 0), round(bbox[1], 0), round(bbox[2], 0), round(bbox[3], 0)]
+        content = current_box["content"]
+        page_elements.append(icon, box_type, coordinates, content)
+    
+    prompt = f"""
+You're an AI Applicant in the Extra Step Process with only looking at the current question.
+
+You will only be looking at the current question during this process.
+
+Current Question: {current_question}
+
+PAGE ELEMENTS FORMAT
+[icon, type, coordinates, content]
+
+Page Elements: {page_elements}
+
+For any icon clicking you will use the page elements from image1 to answer.
+
+You will Follow the Extra Steps Process to complete this question.
+
+Extra Steps Process
+
+1. First you need to determine what type of action we will be taking and the options you have are, markdown, search, and time.
+    - Markdown: if you see options for the current question that means we are using the markdown action.
+    - Search: If there're no options available for the current question and this is not a time question that means we are using the search action.
+    - Time: If you see for the current question that there is no options and it is a time question we will be using the time action.
+
+How to handle each action.
+
+How to Handle markdown Action
+
+1. First look at the body text and the image and find all the options for the current question
+2. Determine if you can click the option you want to click look at the page elements in image 1. If you can stop and return something like this.
+    - Ex: {{action: markdown, action_type: click, 19}}
+3. If you can't click the icon that is available then you need to find the current_option that we are on in the image, then find the option number that we want to go to, return something like this.
+    - Ex: {{action: markdown, action_type: arrow, current_option: 12, option_choice: 5}}
+
+How to Handle the search Action
+
+1. First look at the current question and the USER PROFILE and decide what is the best way to answer this, with the highest likelihood that a suggestion pops up for the answer.
+2. Some Search Action will need a list of answers and some will just need one individual answer. Your job is to look at the current question and the USER PROFILE to be able to determine if it is a single word type of response or is it multiple single word responses need to be inputed.
+    - Ex 1: {{action: search, text_option: [no]}}
+    - Ex 2: {{action: search, text_options: [skill 1, skill 2, skill 3]}}
+
+How to Handle the time Action:
+
+1. First look at the current question and the format for the question and then the USER PROFILE and determine what the desired_date should be.
+2. Determine how many arrows to the left do we need to be to be at the farthest point to the left of the current question.
+3. Next determine which images have the calendar popup, image1 and image2 can both be true and false
+4. The desired_date must be in numbers format and should match the format the question is asking for,
+    - day format ex: {{action: time, desired_date: 08/25/26, left_arrow: 0, image1: True, image2: False}}
+    - month format ex: {{action: time, desired_date: 08/26, left_arrow: 2, image1: False, image2: False}}
+    - Year format ex: {{action: time, desired_date: 2026, left_arrow: 1, image1: True, image2: True}}
+
+Actions Descriptions
+
+markdown - When the current question has options always choose the markdown option.
+
+search - When the current question has no options and is not a time question choose the search search action.
+
+time - When the current question has no options and it is a time question choose the time action.
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+last_name={state["last_name"]}
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+
+
+    response = extra_steps_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pyautogui_encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(new_tokens=new_tokens, model_name=model_name, state=state)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"extra steps answer: {answer}")
+    action = answer.get("action")
+    action_type = answer.get("action_type")
+    icon = answer.get("icon")
+    current_option = answer.get("current_option")
+    option_choice = answer.get("option_choice")
+    text_options = answer.get("text_options")
+    desired_date = answer.get("desired_date")
+    left_arrow = answer.get("left_arrow")
+    image1 = answer.get("image1")
+    image2 = answer.get("image2")
+    if action == "markdown":
+        if action_type == "click":
+            return state
+    return state
+
+def extra_steps_action(current_answer: list, full_page_width: int, full_page_height: int, state: ApplicationState, boxes_details=None):
+    page = state["current_page"]["page"]
+    context = state.get("context")
+    page_count = len(context.pages)
+    action = current_answer[0]
+    if action == "markdown":
+        action_type = current_answer[1]
+        if action_type == "click":
+            icon = current_answer[2]
+            current_box = boxes_details[icon]
+            current_answer = [action_type, icon]
+            print("markdown action in extra steps")
+            state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+            state = markdown_process()
+            return state
+        else:
+            current_answer
+    elif action == "search":
+        print("search action in extra steps")
+    elif action == "time":
+        print("time action in extra steps")
 
 def time_process(current_question: str, full_page_width: int, page_x: int, page_y: int, state: ApplicationState):
     page = state["current_page"]["page"]
@@ -2997,8 +3801,10 @@ IMPORTANT
 3. If the question is incorrect or not answered use the Finish Question Process
 
 Finish Question Process
-1. First determine if the options for the current question is open or not
-2. If you see no options that means we need to reopen the box again.
+1. First determine if the question is finished and answered correctly. If it is return this.
+- Ex: {{action: white_pixel, icon: -1, complete: True}}
+2. First determine if the options for the current question is open or not
+3. If you see no options that means we need to reopen the box again.
    - Your responsibility is to find the icon that reopens the question
    - Example output: {{action: "click", icon: 8, complete: False}}
 
@@ -4507,6 +5313,16 @@ def complete_application(url2: str):
         print(f"Browser closing due to : {leaving_reason}")
         browser.close()
 
-complete_application(url)
+# complete_application(url)
 
-print("hello world")
+image = Image.open("/Users/peytonrivers/Desktop/test6.png")
+buffer = io.BytesIO()
+
+image.save(buffer, format="PNG")
+decoded_bytes = buffer.getvalue()
+encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
+data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+response = response.json()
+boxes_details = response["boxes_details"]
+print(boxes_details)
