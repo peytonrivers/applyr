@@ -56,11 +56,27 @@ class ExtraStepsProcess(TypedDict):
     icon: int | None
     current_option: int | None
     option_choice: int | None
-    text_options: list[str] | None
+    list_text: list[str] | None
     desired_date: str | None
     left_arrow: int | None
     image1: bool | None
     image2: bool | None
+
+class ReviewQuickProcess(TypedDict):
+    action: str | None
+    icon: int | None
+    complete: bool
+
+class QuickSelectProcess(TypedDict):
+    desired_option: int | None
+    list_text: list[str] | None
+
+class QuickSearchProcess(TypedDict):
+    list_text: list[str]
+
+class SetupSelectProcess(TypedDict):
+    action: str
+    icon: list[int] | None
 
 class FindIcon(TypedDict):
     icon: int
@@ -209,6 +225,21 @@ class MarkdownProcess(TypedDict):
     current_option: int | None
     option_choice: int | None
 
+class DropdownProcess(TypedDict):
+    action: str
+    icon: int | None
+    complete: bool | None
+    arrow_status: bool | None
+    current_option: int | None
+    desired_option: int | None
+    total_options: int | None
+    current_text: str | None
+    desired_text: str | None
+    action_text: str | None
+    list_text: list[str] | None
+    reason: str
+
+
 class ReviewMarkdownProcess(TypedDict):
     action: str | None
     icon: int | None
@@ -219,6 +250,11 @@ class CompleteMarkdownProcess(TypedDict):
     action: str | None
     icon: int | None
     complete: bool
+
+class QuickTimeProcess(TypedDict):
+    year: int
+    month: int | None
+    day: int | None
 
 class FindTimeProcess(TypedDict):
     action: str | None
@@ -351,6 +387,7 @@ class ApplicationState(TypedDict):
 
     # Wait
     wait_action: str
+    wait_tracker: int
 
     # AI action
     action: str
@@ -469,34 +506,6 @@ class UserProfile(TypedDict):
     github_url: str | None
     portfolio_url: str | None
 
-class ApplicationsState(TypedDict):
-    # Required
-    job_url: str
-    user_id: str
-    user_profile: UserProfile       # ← everything about the person lives here
-
-    # Job info
-    company_name: str | None
-    job_type: str | None
-
-    # Documents
-    resume_text: str
-    resume_upload: str
-    cover_letter_text: str | None
-    cover_letter_upload: str | None
-
-    # Routing + state
-    intent: Literal["apply", "recognition", "signup", "forms"] | None
-    current_page_url: str | None
-    error: str | None
-    retry_count: int
-    messages: Annotated[list, add_messages]
-
-    # Classifications
-    apply_classification: ApplyClassification | None
-    recognition_classification: RecognitionClassification | None
-    signup_classification: SignupClassification | None
-    forms_classification: FormsClassification | None
     
 class ApplyClassification(TypedDict):
     your: str

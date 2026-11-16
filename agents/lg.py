@@ -18,13 +18,16 @@ from playwright.sync_api import sync_playwright
 from playwright_stealth import Stealth
 from playwright.sync_api import TimeoutError
 import random
+import math
 import json
 import time
 import base64
 from datetime import datetime
-from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, FindTimeProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess, ReviewFindTimeProcess, ExtraStepsProcess
+from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, FindTimeProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess, ReviewFindTimeProcess, ExtraStepsProcess, SetupSelectProcess, QuickSelectProcess, ReviewQuickProcess, QuickTimeProcess, DropdownProcess, QuickSearchProcess
 import io
+from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+from datetime import datetime
 import numpy as np
 import requests
 import cv2
@@ -87,6 +90,13 @@ text_time_process_llm2 = llm2.with_structured_output(TextTimeProcess, include_ra
 review_time_process_llm2 = llm2.with_structured_output(ReviewTimeProcess, include_raw=True)
 calendar_time_process_llm2 = llm2.with_structured_output(CalendarTimeProcess, include_raw=True)
 extra_steps_process_llm2 = llm2.with_structured_output(ExtraStepsProcess, include_raw=True)
+setup_select_process_llm2 = llm2.with_structured_output(SetupSelectProcess, include_raw=True)
+quick_select_process_llm2 = llm2.with_structured_output(QuickSelectProcess, include_raw=True)
+quick_time_process_llm2 = llm2.with_structured_output(QuickTimeProcess, include_raw=True)
+review_quick_process_llm2 = llm2.with_structured_output(ReviewQuickProcess, include_raw=True)
+dropdown_process_llm2 = llm2.with_structured_output(DropdownProcess, include_raw=True)
+quick_search_process_llm2 = llm2.with_structured_output(QuickSearchProcess, include_raw=True)
+
 
 url = "https://www.allstate.jobs/job/23890328/software-engineering-manager-java-/"
 url = "https://www.allstate.jobs/job/23927829/software-engineer-all-levels-/"
@@ -294,6 +304,22 @@ def coordinates_process(coordinates: list, full_page_width, full_page_height):
     page_y = (middle_y * full_page_height)
     return page_x, page_y
 
+def cropped_coordinates_process(min_cut_off_height: int, old_page_height: int, new_page_height: int, desired_bbox: list[float]):
+    x1, y1, x2, y2 = desired_bbox
+
+    y1_pixel = (y1 * new_page_height) + min_cut_off_height
+    y2_pixel = (y2 * new_page_height) + min_cut_off_height
+
+    new_bbox = [x1, y1_pixel / old_page_height, x2, y2_pixel / old_page_height]
+
+    print(f"Original cropped bbox: {desired_bbox}")
+    print(f"Converted bbox: {new_bbox}")
+    print(f"Old height: {old_page_height}")
+    print(f"New height: {new_page_height}")
+    print(f"Top crop offset: {min_cut_off_height}")
+
+    return new_bbox
+
 def page_width_and_height_process(state: ApplicationState):
     page = state["current_page"]["page"]
     for i in range(500, 1301, 100):
@@ -330,20 +356,21 @@ def screenshot_process(state: ApplicationState):
     return encoded_bytes, full_page_width, full_page_height
 
 def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_width=None, full_page_height=None):
+    page = state["current_page"]["page"]
     if not encoded_bytes:
-        page = state["current_page"]["page"]
         full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
         encoded_bytes, full_page_width, full_page_height = screenshot_process(state)
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    image.show()
+    image_width, image_height = image.size
+    print(f"image pixel height: {image_height}")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]
-    print(f"boxes details: {boxes_details}")
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
     return encoded_bytes, boxes_details, full_page_width, full_page_height
 
 def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
@@ -378,610 +405,6 @@ def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
     new_image_bytes = new_image_buffer.getvalue()
     encoded_bytes = base64.b64encode(new_image_bytes).decode("utf-8")
     return encoded_bytes
-
-
-def pixel_image_cropping(encoded_bytes1: int, encoded_bytes2: int, full_page_width=None, top_height1=None, bottom_height1=None, top_height2=None, bottom_height2=None):
-
-    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
-    buffer = io.BytesIO(buffer)
-    image1 = Image.open(buffer)
-    image1_height, image1_width = image1.size
-    image1_matrix = np.array(image1)
-
-    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image2 = Image.open(buffer)
-    image2_height, image2_width = image2.size
-    image2_matrix = np.array(image2)
-
-    cutoff_top_height = 0
-    cutoff_bottom_height = 0
-
-    if not top_height1:
-        for i in range(len(image1_matrix)):
-            image1_row = image1_matrix[i]
-            image2_row = image2_matrix[I]
-            for j in range(len(image1_row)):
-                image1_pixel = image1_row[j]
-                image2_pixel = image2_row[j]
-                if image1_pixel != image2_pixel:
-                    cutoff_top_height = i
-                    break
-
-        for i in range(len(image1_matrix, 0, -1)):
-            image1_row = image1_matrix[i]
-            image2_row = image2_matrix[I]
-            for j in range(len(image1_row)):
-                image1_pixel = image1_row[j]
-                image2_pixel = image2_row[j]
-                if image1_pixel != image2_pixel:
-                    cutoff_bottom_height = i
-                    break
-    else:
-        image1_top_difference = image1_height - top_height1
-        image2_top_difference = image2_height - top_height2
-
-        if image1_top_difference > image2_top_difference:
-            for I in range(len(top_height1, image1_height)):
-                image1_row = image1_matrix[i]
-                image2_row = image2_matrix[top_height2]
-                for j in range(len(image1_row)):
-                    image1_pixel = image1_row[j]
-                    image2_pixel = image2_row[j]
-                    if image1_pixel != image2_pixel:
-                        cutoff_top_height = top_height2
-                        break
-                top_height2 += 1
-        else:
-            for I in range(len(top_height2, image2_height)):
-                image1_row = image1_matrix[top_height1]
-                image2_row = image2_matrix[I]
-                for j in range(len(image1_row)):
-                    image1_pixel = image1_row[j]
-                    image2_pixel = image2_row[j]
-                    if image1_pixel != image2_pixel:
-                        cutoff_top_height = i
-                        break
-                top_height1 += 1
-
-        if bottom_height1 > bottom_height2:
-            for I in range(len(bottom_height1, 0, -1)):
-                image1_row = image1_matrix[i]
-                image2_row = image2_matrix[bottom_height2]
-                for j in range(len(image1_row)):
-                    image1_pixel = image1_row[j]
-                    image2_pixel = image2_row[j]
-                    if image1_pixel != image2_pixel:
-                        cutoff_top_height = bottom_height2
-                        break
-                bottom_height2 -= 1
-        else:
-            for I in range(len(bottom_height2, 0, -1)):
-                image1_row = image1_matrix[bottom_height1]
-                image2_row = image2_matrix[I]
-                for j in range(len(image1_row)):
-                    image1_pixel = image1_row[j]
-                    image2_pixel = image2_row[j]
-                    if image1_pixel != image2_pixel:
-                        cutoff_bottom_height = i
-                        break
-                bottom_height1 -= 1
-
-    if cutoff_top_height != 0 or cutoff_bottom_height != 0:
-        cropped_image = image2.crop((0, cutoff_top_height, full_page_width, cutoff_bottom_height))
-        buffer = io.BytesIO()
-        cropped_image.save(buffer, format="PNG")
-        decoded_bytes = buffer.getvalue()
-        encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
-        return encoded_bytes
-    else:
-        return encoded_bytes2
-
-
-def pixel_image_cropping(
-    encoded_bytes1: str,
-    encoded_bytes2: str,
-    full_page_width=None,
-    top_height1=None,
-    bottom_height1=None,
-    top_height2=None,
-    bottom_height2=None
-):
-
-    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image1 = Image.open(buffer)
-    image1_width, image1_height = image1.size
-    image1_matrix = np.array(image1)
-
-    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image2 = Image.open(buffer)
-    image2_width, image2_height = image2.size
-    image2_matrix = np.array(image2)
-
-    if full_page_width is None:
-        full_page_width = image2_width
-
-    # Compare complete images when no anchor points are provided.
-    if top_height1 is None:
-
-        cutoff_top_height = None
-        cutoff_bottom_height = None
-
-        comparison_height = min(image1_height, image2_height)
-
-        # Search from the top.
-        for i in range(comparison_height):
-            image1_row = image1_matrix[i]
-            image2_row = image2_matrix[i]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_top_height = i
-                break
-
-        # Search from the bottom.
-        for i in range(comparison_height - 1, -1, -1):
-            image1_row = image1_matrix[i]
-            image2_row = image2_matrix[i]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_bottom_height = i + 1
-                break
-
-        if cutoff_top_height is None or cutoff_bottom_height is None:
-            return encoded_bytes2
-
-    else:
-
-        # Use the original image 2 anchor points as fallbacks.
-        cutoff_top_height = top_height2
-        cutoff_bottom_height = bottom_height2
-
-        if any(
-            value is None
-            for value in (
-                top_height1,
-                top_height2,
-                bottom_height1,
-                bottom_height2
-            )
-        ):
-            return encoded_bytes2
-
-        # TOP: Search downward from matching top anchors.
-        top_steps = min(
-            image1_height - top_height1,
-            image2_height - top_height2
-        )
-
-        for offset in range(top_steps):
-            image1_row = image1_matrix[top_height1 + offset]
-            image2_row = image2_matrix[top_height2 + offset]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_top_height = top_height2 + offset
-                break
-
-        # BOTTOM: Search upward from matching bottom anchors.
-        bottom_steps = min(
-            bottom_height1 + 1,
-            bottom_height2 + 1
-        )
-
-        for offset in range(bottom_steps):
-            image1_row = image1_matrix[bottom_height1 - offset]
-            image2_row = image2_matrix[bottom_height2 - offset]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_bottom_height = bottom_height2 - offset + 1
-                break
-
-    # Keep the cropping coordinates inside image 2.
-    cutoff_top_height = max(
-        0, min(image2_height, cutoff_top_height)
-    )
-    cutoff_bottom_height = max(
-        0, min(image2_height, cutoff_bottom_height)
-    )
-
-    if cutoff_top_height >= cutoff_bottom_height:
-        return encoded_bytes2
-
-    cropped_image = image2.crop(
-        (
-            0,
-            cutoff_top_height,
-            min(full_page_width, image2_width),
-            cutoff_bottom_height
-        )
-    )
-
-    buffer = io.BytesIO()
-    cropped_image.save(buffer, format="PNG")
-
-    decoded_bytes = buffer.getvalue()
-    encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
-
-    return encoded_bytes
-
-
-
-
-import base64
-import io
-import numpy as np
-from PIL import Image
-
-
-def pixel_image_cropping(
-    encoded_bytes1: str,
-    encoded_bytes2: str,
-    full_page_width=None,
-    top_height1=None,
-    bottom_height1=None,
-    top_height2=None,
-    bottom_height2=None
-):
-
-    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image1 = Image.open(buffer)
-    image1_width, image1_height = image1.size
-    image1_matrix = np.array(image1)
-
-    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image2 = Image.open(buffer)
-    image2_width, image2_height = image2.size
-    image2_matrix = np.array(image2)
-
-    if full_page_width is None:
-        full_page_width = image2_width
-
-    # FULL IMAGE PIXEL COMPARISON
-
-    if top_height1 is None:
-
-        cutoff_top_height = None
-        cutoff_bottom_height = None
-
-        comparison_height = min(image1_height, image2_height)
-
-        for i in range(comparison_height):
-            image1_row = image1_matrix[i]
-            image2_row = image2_matrix[i]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_top_height = i
-                break
-
-        for i in range(comparison_height - 1, -1, -1):
-            image1_row = image1_matrix[i]
-            image2_row = image2_matrix[i]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_bottom_height = i + 1
-                break
-
-        if cutoff_top_height is None or cutoff_bottom_height is None:
-            return encoded_bytes2
-
-    # BOUNDING BOX ANCHOR PIXEL COMPARISON
-
-    else:
-
-        cutoff_top_height = top_height2
-        cutoff_bottom_height = bottom_height2
-
-        if any(
-            value is None
-            for value in (
-                top_height1,
-                top_height2,
-                bottom_height1,
-                bottom_height2
-            )
-        ):
-            return encoded_bytes2
-
-        top_steps = min(
-            image1_height - top_height1,
-            image2_height - top_height2
-        )
-
-        for offset in range(top_steps):
-            image1_row = image1_matrix[top_height1 + offset]
-            image2_row = image2_matrix[top_height2 + offset]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_top_height = top_height2 + offset
-                break
-
-        bottom_steps = min(
-            bottom_height1 + 1,
-            bottom_height2 + 1
-        )
-
-        for offset in range(bottom_steps):
-            image1_row = image1_matrix[bottom_height1 - offset]
-            image2_row = image2_matrix[bottom_height2 - offset]
-
-            if not np.array_equal(image1_row, image2_row):
-                cutoff_bottom_height = bottom_height2 - offset + 1
-                break
-
-    cutoff_top_height = max(
-        0, min(image2_height, cutoff_top_height)
-    )
-    cutoff_bottom_height = max(
-        0, min(image2_height, cutoff_bottom_height)
-    )
-
-    if cutoff_top_height >= cutoff_bottom_height:
-        return encoded_bytes2
-
-    cropped_image = image2.crop(
-        (
-            0,
-            cutoff_top_height,
-            min(full_page_width, image2_width),
-            cutoff_bottom_height
-        )
-    )
-
-    buffer = io.BytesIO()
-    cropped_image.save(buffer, format="PNG")
-
-    decoded_bytes = buffer.getvalue()
-    encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
-
-    return encoded_bytes
-
-
-def cropped_image(
-    encoded_bytes1: str,
-    encoded_bytes2: str,
-    boxes_details1: list[dict],
-    boxes_details2: list[dict],
-    cut_off_height: int,
-    full_page_width: int,
-    full_page_height: int,
-    state: "ApplicationState",
-    cuttoff_height=None
-):
-
-    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image1 = Image.open(buffer)
-    image1_width, image1_height = image1.size
-    image1_matrix = np.array(image1)
-
-    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image2 = Image.open(buffer)
-    image2_width, image2_height = image2.size
-    image2_matrix = np.array(image2)
-
-    page = state["current_page"]["page"]
-
-    current_height = page.evaluate("""() => {
-        return Math.max(
-            document.body.scrollHeight,
-            document.documentElement.scrollHeight,
-            document.body.offsetHeight,
-            document.documentElement.offsetHeight,
-            document.body.clientHeight,
-            document.documentElement.clientHeight
-        );
-    }""")
-
-    if current_height != full_page_height:
-
-        above_list1 = []
-        below_list1 = []
-        above_list2 = []
-        below_list2 = []
-
-        for i in range(len(boxes_details1)):
-            current_box = boxes_details1[i]
-            content = current_box["content"]
-            bbox = current_box["bbox"]
-
-            current_box_height = full_page_height * (
-                (bbox[1] + bbox[3]) / 2
-            )
-
-            if current_box_height > cut_off_height:
-                below_list1.append(
-                    [current_box_height, content, current_box]
-                )
-            else:
-                above_list1.append(
-                    [current_box_height, content, current_box]
-                )
-
-        for l in range(len(boxes_details2)):
-            current_box = boxes_details2[l]
-            content = current_box["content"]
-            bbox = current_box["bbox"]
-
-            current_box_height = current_height * (
-                (bbox[1] + bbox[3]) / 2
-            )
-
-            if current_box_height > cut_off_height:
-                below_list2.append(
-                    [current_box_height, content, current_box]
-                )
-            else:
-                above_list2.append(
-                    [current_box_height, content, current_box]
-                )
-
-        below_list1.sort(key=lambda x: x[0])
-        below_list2.sort(key=lambda x: x[0])
-        above_list1.sort(key=lambda x: x[0], reverse=True)
-        above_list2.sort(key=lambda x: x[0], reverse=True)
-
-        top_height1 = None
-        top_height2 = None
-        bottom_height1 = None
-        bottom_height2 = None
-
-        top_finished = False
-        bottom_finished = False
-
-        # TOP BOUNDING BOX MATCHING
-
-        for i in range(len(above_list1)):
-            if top_finished:
-                break
-
-            first_content = above_list1[i][1]
-
-            for l in range(len(above_list2)):
-                if top_finished:
-                    break
-
-                second_content = above_list2[l][1]
-
-                if first_content == second_content:
-                    first_box = above_list1[i][2]
-                    second_box = above_list2[l][2]
-
-                    temp_top_height1 = round(
-                        image1_height * (
-                            (first_box["bbox"][1] + first_box["bbox"][3]) / 2
-                        )
-                    )
-
-                    temp_top_height2 = round(
-                        image2_height * (
-                            (second_box["bbox"][1] + second_box["bbox"][3]) / 2
-                        )
-                    )
-
-                    temp_top_height1 = max(
-                        0, min(image1_height - 1, temp_top_height1)
-                    )
-                    temp_top_height2 = max(
-                        0, min(image2_height - 1, temp_top_height2)
-                    )
-
-                    first_row = image1_matrix[temp_top_height1]
-                    second_row = image2_matrix[temp_top_height2]
-
-                    if np.array_equal(first_row, second_row):
-                        top_height1 = temp_top_height1
-                        top_height2 = temp_top_height2
-                        top_finished = True
-                        break
-
-                    start = max(0, temp_top_height2 - 5)
-                    end = min(image2_height, temp_top_height2 + 6)
-
-                    for j in range(start, end):
-                        second_row = image2_matrix[j]
-
-                        if np.array_equal(first_row, second_row):
-                            top_height1 = temp_top_height1
-                            top_height2 = j
-                            top_finished = True
-                            break
-
-        # BOTTOM BOUNDING BOX MATCHING
-
-        for i in range(len(below_list1)):
-            if bottom_finished:
-                break
-
-            first_content = below_list1[i][1]
-
-            for l in range(len(below_list2)):
-                if bottom_finished:
-                    break
-
-                second_content = below_list2[l][1]
-
-                if first_content == second_content:
-                    first_box = below_list1[i][2]
-                    second_box = below_list2[l][2]
-
-                    temp_bottom_height1 = round(
-                        image1_height * (
-                            (first_box["bbox"][1] + first_box["bbox"][3]) / 2
-                        )
-                    )
-
-                    temp_bottom_height2 = round(
-                        image2_height * (
-                            (second_box["bbox"][1] + second_box["bbox"][3]) / 2
-                        )
-                    )
-
-                    temp_bottom_height1 = max(
-                        0, min(image1_height - 1, temp_bottom_height1)
-                    )
-                    temp_bottom_height2 = max(
-                        0, min(image2_height - 1, temp_bottom_height2)
-                    )
-
-                    first_row = image1_matrix[temp_bottom_height1]
-                    second_row = image2_matrix[temp_bottom_height2]
-
-                    if np.array_equal(first_row, second_row):
-                        bottom_height1 = temp_bottom_height1
-                        bottom_height2 = temp_bottom_height2
-                        bottom_finished = True
-                        break
-
-                    start = max(0, temp_bottom_height2 - 5)
-                    end = min(image2_height, temp_bottom_height2 + 6)
-
-                    for j in range(start, end):
-                        second_row = image2_matrix[j]
-
-                        if np.array_equal(first_row, second_row):
-                            bottom_height1 = temp_bottom_height1
-                            bottom_height2 = j
-                            bottom_finished = True
-                            break
-
-        # CALL PIXEL IMAGE CROPPING WITH MATCHED ANCHORS
-
-        if (
-            top_finished
-            and bottom_finished
-            and top_height1 < bottom_height1
-            and top_height2 < bottom_height2
-        ):
-            return pixel_image_cropping(
-                encoded_bytes1=encoded_bytes1,
-                encoded_bytes2=encoded_bytes2,
-                full_page_width=full_page_width,
-                top_height1=top_height1,
-                bottom_height1=bottom_height1,
-                top_height2=top_height2,
-                bottom_height2=bottom_height2
-            )
-
-        # FALLBACK WHEN BOUNDING BOX MATCHING FAILS
-
-        return pixel_image_cropping(
-            encoded_bytes1=encoded_bytes1,
-            encoded_bytes2=encoded_bytes2,
-            full_page_width=full_page_width
-        )
-
-    else:
-        print("going through pixel process normally")
-
-        return pixel_image_cropping(
-            encoded_bytes1=encoded_bytes1,
-            encoded_bytes2=encoded_bytes2,
-            full_page_width=full_page_width
-        )
 
 
 def decide_page(state: ApplicationState):
@@ -1029,6 +452,10 @@ def decide_page(state: ApplicationState):
     action_reason = decision["action_reason"]
     if action == "exit":
         state["leaving_reason"] = action_reason
+    elif action == "wait":
+        wait_tracker = state["wait_tracker"]
+        wait_tracker += 1
+        state["wait_tracker"] = wait_tracker
     state["action"] = action
 
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -1052,18 +479,29 @@ def decide_routing(state: ApplicationState):
         return "exit"
     print(f"Decide routing action: {action}")
     if action == "apply":
+        state["wait_tracker"] = 0
         return "apply"
-    if action == "cookies":
+    elif action == "cookies":
+        state["wait_tracker"] = 0
         return "cookies"
     elif action == "signup":
+        state["wait_tracker"] = 0
         return "signup"
     elif action == "forms":
+        state["wait_tracker"] = 0
         return "forms"
     elif action == "application":
+        state["wait_tracker"] = 0
         return "application"
     elif action == "verification":
+        state["wait_tracker"] = 0
         return "verification"
     elif action == "wait":
+        wait_tracker = state["wait_tracker"]
+        print(f"wait tracker: {wait_tracker}")
+        if wait_tracker >= 3:
+            state["leaving_reason"] = "Wait tracker hit 3."
+            return "exit"
         return "wait"
     else:
         # Fallback for "error" or any unexpected value
@@ -1084,31 +522,25 @@ def wait_process(state: ApplicationState):
     page = state["current_page"]["page"]
     print(f"page: {page}")
     print("we are in the wait process")
-    time.sleep(20)
+    time.sleep(3)
     body_text = page.locator("body").inner_text()
     if len(body_text) > 20:
         state["wait_action"] = "continue"
-        return "continue"
-    time.sleep(20)
-    body_text = page.locator("body").inner_text()
+        return state
+    time.sleep(30)
     if len(body_text) > 20:
         state["wait_action"] = "continue"
-        return "continue"
-    time.sleep(20)
-    body_text = page.locator("body").inner_text()
-    if len(body_text) > 20:
-        state["wait_action"] = "continue"
-        return "continue"
-    state["wait_action"] = "exit"
-    state["leaving_reason"] = "The page would not load"
-    return "exit"
+    else:
+        state["wait_action"] = "exit"
+        state["leaving_reason"] = "The page would not load"
+    return state
 
 def wait_routing(state: ApplicationState):
     wait_action = state.get("wait_action")
     if wait_action == "continue":
         return "continue"
     else:
-        return "continue"
+        return "exit"
 def cookies_process(state: ApplicationState):
     page = state["current_page"]["page"]
     encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
@@ -1410,6 +842,8 @@ def answser_question_process(state: ApplicationState):
         encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
         encoded_bytes2 = boxes_only_process(encoded_bytes=encoded_bytes2, boxes_details=boxes_details)
         decoded_bytes2 = base64.b64decode(encoded_bytes2.encode("utf-8"))
+        buffer = io.BytesIO(decoded_bytes2)
+        image = Image.open(buffer)
         page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -1438,15 +872,13 @@ GOAL
 ACTIONS
 skip: No change needed or question should be skipped.
 fill: Fill an empty input. Requires action_text + icon.
-time: Any question that has anything to due with time. Requires icon + current_question.
 delete: Clear incorrect/unwanted text. Requires icon.
 delete_and_fill: Delete text and fill it in with new text.
 click: Select/unselect an immediately answerable option. Requires icon.
-search: When you need to search something or enter skills that could possibly add suggested drop downs, search texts must always be one word.
 upload_resume: Resume upload field. Requires icon.
 upload_cover_letter: Cover-letter upload field. Requires icon.
+extra_steps: we use this for time questions, dropdown questions, or when we need to search to answer the question. Requires icon + question.
 click_and_view: Click only when it reveals additional fields/questions that must be completed. Requires icon + question.
-markdown: Dropdown/combobox/menu requiring option discovery and selection. Requires icon + current_question.
 submit: Finalize or advance the completed page/section. Requires icon.
 
 IMPORTANT
@@ -1472,21 +904,17 @@ fill: [action, icon, action_text]
 
 delete: [action, icon]
 
-delete: [action, icon, action_text]
+delete_and_fill: [action, icon, action_text]
 
 click: [action, icon]
-
-time: [action, icon, current_question]
-
-search: [action, icon, current_question, list of text]
 
 upload_resume: [action, icon]
 
 upload_cover_letter: [action, icon]
 
-click_and_view: [action, icon, current_question]
+extra_steps: [action, icon, current_question]
 
-markdown: [action, icon, current_question]
+click_and_view: [action, icon, current_question]
 
 submit: [action, icon, submit_text]
 
@@ -1494,7 +922,7 @@ ACTIONS
 
 Example:
 
-items: [["skip"], ["fill", 28, {state["email"]}], ["delete_and_fill", 75, "{state["country"]}] ["time", 35, "When do you graduate?"], ["delete", 38], ["delete_and_fill", 42, {state["first_name"]}], ["click", 32], ["search", ["python", "playwright", "java"]], ["search", 8, "What skills do you have", ["skill 1", "skill 2", "skill 3"]], ["upload_resume", 50], ["upload_cover_letter", 52], ["click_and_view", 22, "Add More Work Experience"], ["markdown", 60, "What U.S. State are you in?"], ["submit", 30]]
+items: [["skip"], ["fill", 28, {state["email"]}], ["delete", 5] ["delete_and_fill", 75, "{state["country"]}], ["click", 32], ["upload_resume", 50], ["upload_cover_letter", 52], ["extra_steps", 20, "What skills do you have"] ["click_and_view", 22, "Add More Work Experience"], ["submit", 30]]
 error: yes there was an error on checking a box and I handled it by clicking a box to fix it.
 
 Current Attempt on Page: {attempt}
@@ -1657,7 +1085,7 @@ Ex 4:
     return state, decision, all_reasons
 
 def action_process(ai_answers: list[list], boxes_details: list[dict], state: ApplicationState, full_page_width: int, full_page_height: int, white_x=None, white_y=None, process=None, page_count=None):
-    ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "delete": 2, "click": 3, "time": 4, "search": 5, "upload_resume": 6, "upload_cover_letter": 7, "markdown": 8, "click_and_view": 9, "add_more": 10, "submit": 11}.get(x[0].lower(), 999))
+    ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "delete": 2, "click": 3, "extra_steps": 4, "upload_resume": 5, "upload_cover_letter": 6, "click_and_view": 7, "add_more": 8, "submit": 9}.get(x[0].lower(), 999))
     click_and_view_count = 0
     print(f"ai answers: {ai_answers}")
     for l in range(len(ai_answers)):
@@ -1745,21 +1173,25 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
     page = state["current_page"]["page"]
     context = state.get("context")
     action = current_answer[0] if len(current_answer ) > 0 else None
+    print(f"current answer: {current_answer}")
     if not action or action == "skip":
         return state
     if action != "arrow":
         icon = current_answer[1] if len(current_answer ) > 1 else None
-        if not icon or not isinstance(icon, int):
+        if icon is None or not isinstance(icon, int):
             return state
         if icon >= 0:
             coordinates = current_box.get("bbox")
             page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
+            print(f"page_x: {page_x}, page_y: {page_y}")
     context = state.get("context")
 
     if action == "fill":
         action_text = current_answer[2] if len(current_answer ) > 2 else None
         if not action_text:
             action_text = ""
+        for i in range(1000):
+            page.keyboard.press("ArrowRight")
         for i in range(1000):
             page.keyboard.press("Backspace")
         page.mouse.click(page_x, page_y)
@@ -1817,8 +1249,8 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
                 all_pages = context.pages
                 all_pages[-1].close()
     elif action == "white_pixel":
-        if full_page_height >= 700:
-            full_page_height = 700
+        if full_page_height >= 500:
+            full_page_height = 500
         pyautogui_image = pyautogui.screenshot(region=(40, 120, full_page_width, full_page_height))
         buffer = io.BytesIO()
         pyautogui_image.save(buffer, format="PNG")
@@ -1832,6 +1264,20 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         pyautogui.click(x=white_x, y=white_y)
         time.sleep(0.1)
         pyautogui.moveTo(0, 0)
+    elif action == "extra_steps":
+        current_question = current_answer[2] if len(current_answer ) > 2 else None
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height != full_page_height:
+            print("used find icon for time")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        page.mouse.click(page_x, page_y)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        state = extra_steps_process(current_answer=current_answer, old_encoded_bytes=encoded_bytes, old_boxes_details=boxes_details, old_page_width=full_page_width, old_page_height=full_page_height, page_x=page_x, page_y=page_y, cut_off_height=page_y, state=state)
     elif action == "time":
         current_question = current_answer[2] if len(current_answer ) > 2 else None
         current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
@@ -1860,11 +1306,9 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
             all_pages[-1].close()
     elif action == "arrow":
         current_option = current_answer[1]
-        option_choice = current_answer[2]
-        option_difference = option_choice - current_option
+        desired_option = current_answer[2]
+        option_difference = desired_option - current_option
         if option_difference == 0:
-            pyautogui.hotkey("down")
-            pyautogui.hotkey("up")
             pyautogui.hotkey("enter")
 
         elif option_difference > 0:
@@ -2091,72 +1535,2389 @@ def row_change(matrix_image1, matrix_image2):
                     return i+1
     return None
 
-def cropped_image_process(encoded_image1: str, encoded_image2: str, process=None, submit=None):
-    decoded_image1 = base64.b64decode(encoded_image1.encode("utf-8"))
-    decoded_image2 = base64.b64decode(encoded_image2.encode("utf-8"))
-    buffer1 = io.BytesIO(decoded_image1)
-    buffer2 = io.BytesIO(decoded_image2)
-    image1 = Image.open(buffer1)
-    image2 = Image.open(buffer2)
-    matrix_image1 = np.array(image1)
-    matrix_image2 = np.array(image2)
-    first_cropped_row = row_change(matrix_image1=matrix_image1, matrix_image2=matrix_image2)
-    print(f"First cropped row: {first_cropped_row}")
-    if not first_cropped_row and process:
-        return None, None, None
-    if not first_cropped_row:
-        data = {"image_input": encoded_image2, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
-        response_data = response.json()
-        encoded_bytes = response_data["encoded_bytes"]
-        boxes_details = response_data["boxes_details"]
-        return encoded_bytes, boxes_details, encoded_image2
-    reversed_stage1 = reversed(matrix_image1)
-    reversed_stage2 = reversed(matrix_image2)
-    reversed_matrix_image1 = list(reversed_stage1)
-    reversed_matrix_image2 = list(reversed_stage2)
-    second_cropped_row = row_change(matrix_image1=reversed_matrix_image1, matrix_image2=reversed_matrix_image2)
-    width_image2, height_image2 = image2.size
-    final_second_cropped_row = height_image2 - second_cropped_row
-    print(f"Final second cropped row: {final_second_cropped_row}")
-    cropped_coordinates = (0, first_cropped_row, width_image2, final_second_cropped_row)
-    cropped_image = image2.crop(cropped_coordinates)
-    cropped_buffer = io.BytesIO()
-    cropped_image.save(cropped_buffer, format="PNG")
-    cropped_bytes = cropped_buffer.getvalue()
-    encoded_cropped_bytes = base64.b64encode(cropped_bytes).decode("utf-8")
-    decoded_bytes = base64.b64decode(encoded_cropped_bytes.encode("utf-8"))
+def pixel_image_cropping(encoded_bytes1: str, encoded_bytes2: str, full_page_width=None, top_height1=None, bottom_height1=None, top_height2=None, bottom_height2=None):
+
+    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image1 = Image.open(buffer)
+    image1_width, image1_height = image1.size
+    image1_matrix = np.array(image1)
+
+    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image2 = Image.open(buffer)
+    image2_width, image2_height = image2.size
+    image2_matrix = np.array(image2)
+
+    if full_page_width is None:
+        full_page_width = image2_width
+
+    # FULL IMAGE PIXEL COMPARISON
+
+    if top_height1 is None:
+
+        cut_off_top_height = None
+        cut_off_bottom_height = None
+
+        comparison_height = min(image1_height, image2_height)
+
+        for i in range(comparison_height):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[i]
+
+            if not np.array_equal(image1_row, image2_row):
+                cut_off_top_height = i
+                break
+
+        for i in range(comparison_height - 1, -1, -1):
+            image1_row = image1_matrix[i]
+            image2_row = image2_matrix[i]
+
+            if not np.array_equal(image1_row, image2_row):
+                cut_off_bottom_height = i + 1
+                break
+
+        if cut_off_top_height is None or cut_off_bottom_height is None:
+            return encoded_bytes2, None, None
+
+    # BOUNDING BOX ANCHOR PIXEL COMPARISON
+
+    else:
+
+        cut_off_top_height = top_height2
+        cut_off_bottom_height = bottom_height2
+
+        if any(
+            value is None
+            for value in (
+                top_height1,
+                top_height2,
+                bottom_height1,
+                bottom_height2
+            )
+        ):
+            return encoded_bytes2, None, None
+
+        top_steps = min(
+            image1_height - top_height1,
+            image2_height - top_height2
+        )
+
+        for offset in range(top_steps):
+            image1_row = image1_matrix[top_height1 + offset]
+            image2_row = image2_matrix[top_height2 + offset]
+
+            if not np.array_equal(image1_row, image2_row):
+                cut_off_top_height = top_height2 + offset
+                break
+
+        bottom_steps = min(
+            bottom_height1 + 1,
+            bottom_height2 + 1
+        )
+
+        for offset in range(bottom_steps):
+            image1_row = image1_matrix[bottom_height1 - offset]
+            image2_row = image2_matrix[bottom_height2 - offset]
+
+            if not np.array_equal(image1_row, image2_row):
+                cut_off_bottom_height = bottom_height2 - offset + 1
+                break
+
+    cut_off_top_height = max(0, min(image2_height, cut_off_top_height))
+    cut_off_bottom_height = max(0, min(image2_height, cut_off_bottom_height))
+
+    if cut_off_top_height >= cut_off_bottom_height:
+        return encoded_bytes2, None, None
+
+    cropped_image = image2.crop((0, cut_off_top_height, min(full_page_width, image2_width), cut_off_bottom_height))
+
+    buffer = io.BytesIO()
+    cropped_image.save(buffer, format="PNG")
+
+    decoded_bytes = buffer.getvalue()
+    encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
+
+    return encoded_bytes, cut_off_top_height, cut_off_bottom_height
+
+
+def cropped_image_process(encoded_bytes1: str, encoded_bytes2: str, boxes_details1: list[dict], boxes_details2: list[dict], cut_off_height: int, full_page_width: int, old_page_height: int, state: ApplicationState):
+    decoded_bytes = base64.b64decode(encoded_bytes1.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image1 = Image.open(buffer)
+    image1_width, image1_height = image1.size
+    image1_matrix = np.array(image1)
+
+    decoded_bytes = base64.b64decode(encoded_bytes2.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image2 = Image.open(buffer)
+    image2_width, image2_height = image2.size
+    image2_matrix = np.array(image2)
+
+    page = state["current_page"]["page"]
+
+    current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    if current_height != old_page_height:
+
+        above_list1 = []
+        below_list1 = []
+        above_list2 = []
+        below_list2 = []
+
+        for i in range(len(boxes_details1)):
+            current_box = boxes_details1[i]
+            content = current_box["content"]
+            bbox = current_box["bbox"]
+
+            current_box_height = old_page_height * (
+                (bbox[1] + bbox[3]) / 2
+            )
+
+            if current_box_height > cut_off_height:
+                below_list1.append([current_box_height, content, current_box])
+            else:
+                above_list1.append([current_box_height, content, current_box])
+
+        for l in range(len(boxes_details2)):
+            current_box = boxes_details2[l]
+            content = current_box["content"]
+            bbox = current_box["bbox"]
+
+            current_box_height = current_height * ((bbox[1] + bbox[3]) / 2)
+
+            if current_box_height > cut_off_height:
+                below_list2.append([current_box_height, content, current_box])
+            else:
+                above_list2.append([current_box_height, content, current_box])
+
+        below_list1.sort(key=lambda x: x[0])
+        below_list2.sort(key=lambda x: x[0])
+        above_list1.sort(key=lambda x: x[0], reverse=True)
+        above_list2.sort(key=lambda x: x[0], reverse=True)
+
+        top_height1 = None
+        top_height2 = None
+        bottom_height1 = None
+        bottom_height2 = None
+
+        top_finished = False
+        bottom_finished = False
+
+        # TOP BOUNDING BOX MATCHING
+
+        for i in range(len(above_list1)):
+            if top_finished:
+                break
+
+            first_content = above_list1[i][1]
+
+            for l in range(len(above_list2)):
+                if top_finished:
+                    break
+
+                second_content = above_list2[l][1]
+
+                if first_content == second_content:
+                    first_box = above_list1[i][2]
+                    second_box = above_list2[l][2]
+
+                    temp_top_height1 = round(image1_height * ((first_box["bbox"][1] + first_box["bbox"][3]) / 2))
+
+                    temp_top_height2 = round(image2_height * ((second_box["bbox"][1] + second_box["bbox"][3]) / 2))
+
+                    temp_top_height1 = max(0, min(image1_height - 1, temp_top_height1))
+                    temp_top_height2 = max(0, min(image2_height - 1, temp_top_height2))
+
+                    first_row = image1_matrix[temp_top_height1]
+                    second_row = image2_matrix[temp_top_height2]
+
+                    if np.array_equal(first_row, second_row):
+                        top_height1 = temp_top_height1
+                        top_height2 = temp_top_height2
+                        top_finished = True
+                        break
+
+                    start = max(0, temp_top_height2 - 5)
+                    end = min(image2_height, temp_top_height2 + 6)
+
+                    for j in range(start, end):
+                        second_row = image2_matrix[j]
+
+                        if np.array_equal(first_row, second_row):
+                            top_height1 = temp_top_height1
+                            top_height2 = j
+                            top_finished = True
+                            break
+
+        # BOTTOM BOUNDING BOX MATCHING
+
+        for i in range(len(below_list1)):
+            if bottom_finished:
+                break
+
+            first_content = below_list1[i][1]
+
+            for l in range(len(below_list2)):
+                if bottom_finished:
+                    break
+
+                second_content = below_list2[l][1]
+
+                if first_content == second_content:
+                    first_box = below_list1[i][2]
+                    second_box = below_list2[l][2]
+
+                    temp_bottom_height1 = round(image1_height * ((first_box["bbox"][1] + first_box["bbox"][3]) / 2))
+
+                    temp_bottom_height2 = round(image2_height * ((second_box["bbox"][1] + second_box["bbox"][3]) / 2))
+
+                    temp_bottom_height1 = max(0, min(image1_height - 1, temp_bottom_height1))
+
+                    temp_bottom_height2 = max(0, min(image2_height - 1, temp_bottom_height2))
+
+                    first_row = image1_matrix[temp_bottom_height1]
+                    second_row = image2_matrix[temp_bottom_height2]
+
+                    if np.array_equal(first_row, second_row):
+                        bottom_height1 = temp_bottom_height1
+                        bottom_height2 = temp_bottom_height2
+                        bottom_finished = True
+                        break
+
+                    start = max(0, temp_bottom_height2 - 5)
+                    end = min(image2_height, temp_bottom_height2 + 6)
+
+                    for j in range(start, end):
+                        second_row = image2_matrix[j]
+
+                        if np.array_equal(first_row, second_row):
+                            bottom_height1 = temp_bottom_height1
+                            bottom_height2 = j
+                            bottom_finished = True
+                            break
+
+        # CALL PIXEL IMAGE CROPPING WITH MATCHED ANCHORS
+
+        if (top_finished and bottom_finished and top_height1 < bottom_height1 and top_height2 < bottom_height2):
+            return pixel_image_cropping(
+                encoded_bytes1=encoded_bytes1,
+                encoded_bytes2=encoded_bytes2,
+                full_page_width=full_page_width,
+                top_height1=top_height1,
+                bottom_height1=bottom_height1,
+                top_height2=top_height2,
+                bottom_height2=bottom_height2
+            )
+
+        # FALLBACK WHEN BOUNDING BOX MATCHING FAILS
+
+        return pixel_image_cropping(
+            encoded_bytes1=encoded_bytes1,
+            encoded_bytes2=encoded_bytes2,
+            full_page_width=full_page_width
+        )
+
+    else:
+        print("going through pixel process normally")
+
+        return pixel_image_cropping(
+            encoded_bytes1=encoded_bytes1,
+            encoded_bytes2=encoded_bytes2,
+            full_page_width=full_page_width
+        )
+
+def compare_pixel(encoded_bytes1: str, encoded_bytes2: str):
+    decoded_bytes1 = base64.b64decode(encoded_bytes1.encode("utf-8"))
+    buffer1 = io.BytesIO(decoded_bytes1)
+    image1 = Image.open(buffer1).convert("RGB")
+    image1_width, image1_height = image1.size
+
+    decoded_bytes2 = base64.b64decode(encoded_bytes2.encode("utf-8"))
+    buffer2 = io.BytesIO(decoded_bytes2)
+    image2 = Image.open(buffer2).convert("RGB")
+    image2_width, image2_height = image2.size
+
+    if image1_width != image2_width or image1_height != image2_height:
+        return False
+
+    image1_array = np.array(image1)
+    image2_array = np.array(image2)
+
+    return bool(np.array_equal(image1_array, image2_array))
+
+
+def expand_image(encoded_bytes: str):
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    data = {"image_input": encoded_cropped_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+    image.show()
+
+    width, height = image.size
+    left_padding = 0
+    top_padding = 0
+    expanded_width = width
+    expanded_height = height
+
+    if width < 3500 or height < 100:
+        background_color = image.getpixel((0, height // 2))
+
+        padding = max(0, 3500 - width)
+        left_padding = padding // 2
+        expanded_width = max(3500, width)
+
+        height_padding = max(0, 100 - height)
+        top_padding = height_padding // 2
+        expanded_height = max(100, height)
+
+        expanded = Image.new(
+            "RGB",
+            (expanded_width, expanded_height),
+            background_color
+        )
+
+        expanded.paste(image, (left_padding, top_padding))
+
+        buffer = BytesIO()
+        expanded.save(buffer, format="PNG")
+
+        encoded_bytes = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
+    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+
     response = requests.post("http://127.0.0.1:8000/image_process", json=data)
     response_data = response.json()
+
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]
-    encoded_cropped_bytes = boxes_only_process(encoded_bytes=encoded_cropped_bytes, boxes_details=boxes_details)
-    deco_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-    deco_buffer = io.BytesIO(deco_bytes)
-    deco_image = Image.open(deco_buffer)
-    cropped_width, cropped_height = deco_image.size
-    cropped_height_diff = first_cropped_row - 1
-    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+
+    # Remove padding from the processed image
+    if left_padding > 0 or top_padding > 0:
+        processed_image = Image.open(
+            BytesIO(base64.b64decode(encoded_bytes))
+        )
+
+        processed_image = processed_image.crop((
+            left_padding,
+            top_padding,
+            left_padding + width,
+            top_padding + height
+        ))
+
+        buffer = BytesIO()
+        processed_image.save(buffer, format="PNG")
+
+        encoded_bytes = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        # Restore normalized bounding box coordinates
+        for box in boxes_details:
+            if "bbox" in box:
+                bbox = box["bbox"]
+
+                bbox[0] = (bbox[0] * expanded_width - left_padding) / width
+                bbox[2] = (bbox[2] * expanded_width - left_padding) / width
+                bbox[1] = (bbox[1] * expanded_height - top_padding) / height
+                bbox[3] = (bbox[3] * expanded_height - top_padding) / height
+
+    return encoded_bytes, boxes_details
+
+
+def check_search_options(
+    original_encoded_bytes: str,
+    original_boxes_details: list[dict],
+    old_page_height: int,
+    cut_off_height: int,
+    cropped_encoded_bytes: str,
+    cropped_boxes_details1: list[dict],
+    text_options: list[str],
+    state: ApplicationState
+):
+    page = state["current_page"]["page"]
+
+    def combine_text(boxes_details, search_text):
+        search_text = normalize_text(search_text)
+
+        reorganized_elements = sorted(
+            boxes_details,
+            key=lambda current_box: (
+                current_box["bbox"][0],
+                current_box["bbox"][1]
+            )
+        )
+
+        combined_text = ""
+
+        for current_box in reorganized_elements:
+            content = normalize_text(current_box["content"])
+
+            if not content:
+                continue
+
+            combined_text += content
+
+        # Remove the search text from the combined OCR text.
+        if search_text:
+            combined_text = combined_text.replace(search_text, "", 1)
+
+        return combined_text
+
+    original_text = combine_text(
+        boxes_details=cropped_boxes_details1,
+        search_text=text_options[0]
+    )
+
+    for i in range(len(text_options)):
+
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(
+            state=state
+        )
+
+        if full_page_height == old_page_height:
+            cropped_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(
+                encoded_bytes1=original_encoded_bytes,
+                encoded_bytes2=encoded_bytes
+            )
+
+        else:
+            do_not_use_bytes, current_boxes_details, full_page_width, full_page_height = omniparser_process(
+                state=state
+            )
+
+            cropped_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(
+                encoded_bytes1=original_encoded_bytes,
+                boxes_details1=original_boxes_details,
+                encoded_bytes2=encoded_bytes,
+                boxes_details2=current_boxes_details,
+                cut_off_height=cut_off_height,
+                full_page_width=full_page_width,
+                old_page_height=old_page_height,
+                state=state
+            )
+
+        expanded_bytes, boxes_details = expand_image(
+            encoded_bytes=cropped_bytes
+        )
+
+        current_text = combine_text(
+            boxes_details=boxes_details,
+            search_text=text_options[i]
+        )
+
+        if not compare_text(
+            text1=original_text,
+            text2=current_text
+        ):
+            return False, state
+
+        if i < len(text_options) - 1:
+            for l in range(500):
+                page.keyboard.press("Delete")
+
+            page.keyboard.type(text_options[i + 1])
+
+    return True, state
+
+
+
+def quick_select_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    active_element = page.locator("select:focus")
+    has_type = active_element.count() == 1
+
+    if not has_type:
+        active_element = page.evaluate_handle("document.activeElement").as_element()
+
+        if active_element:
+            tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+            has_type = tag_name == "select"
+
+    if not has_type:
+        return False, state
+
+    total_options = active_element.locator("option").all_text_contents()
+
+    if not total_options:
+        return False, state
+
+    prompt = f"""
+
+You're an AI Applicant helper in the quick select process.
+
+You're job is to look at the current question, the options available, and the USER PROFILE to answer the question to the best of your ability.
+ 
+ Current Question: {current_answer}
+ 
+ Every option: {total_options}
+
+Example response 1: {{desired_option: 8}}
+
+Example response 2: {{desired_option: None}}
+ 
+ USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+
+"""
+
+    response = quick_select_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt
+                }
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+
+    answer = response["parsed"]
+    desired_option = answer.get("desired_option")
+
+    if not isinstance(desired_option, int) or isinstance(desired_option, bool) or desired_option < 0 or desired_option >= len(total_options):
+        return False, state
+
+    if active_element.locator("option").nth(desired_option).is_disabled():
+        return False, state
+
+    desired_text = total_options[desired_option].strip()
+
+    try:
+        active_element.select_option(index=desired_option)
+    except Exception:
+        return False, state
+
+    complete, state = review_quick_process(current_answer=current_answer, desired_text=desired_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    return complete, state
+
+
+def adaptive_select_process(current_answer: dict, total_options: list[str], old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    prompt = f"""
+
+You're an AI Applicant helper in the quick select process.
+
+You're job is to look at the current question, the options available, and the USER PROFILE to answer the question to the best of your ability.
+ 
+ Current Question: {current_answer}
+ 
+ Every option: {total_options}
+
+Example response 1: {{desired_option: 8}}
+
+Example response 2: {{desired_option: None}}
+ 
+ USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+
+"""
+
+    response = quick_select_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt
+                }
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+
+    answer = response["parsed"]
+    desired_option = answer.get("desired_option")
+    return desired_option, state
+
+def quick_rippling_select_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    # First method: Find the active element through Playwright.
+    active_element = page.locator(":focus")
+    has_type = False
+
+    check_script = """
+    (element) => {
+        return element.matches('[role="combobox"]')
+            || !!element.closest('[role="combobox"]');
+    }
+    """
+
+    if active_element.count() == 1:
+        has_type = active_element.evaluate(check_script)
+
+    # Second method: Find the deeply focused element.
+    if not has_type:
+        focus_script = """
+        () => {
+            let active = document.activeElement;
+
+            while (active?.shadowRoot?.activeElement) {
+                active = active.shadowRoot.activeElement;
+            }
+
+            return active;
+        }
+        """
+
+        active_element = page.evaluate_handle(focus_script).as_element()
+
+        if active_element:
+            has_type = active_element.evaluate(check_script)
+
+    if not has_type:
+        return False, state
+
+    # Wait for the dropdown options to load.
+    time.sleep(5)
+
+    # Retrieve options from the dropdown associated with the active element.
+    dropdown_script = """
+    (element) => {
+        const dropdown = element.matches('[role="combobox"]')
+            ? element
+            : element.closest('[role="combobox"]');
+
+        if (!dropdown || dropdown.getAttribute("aria-expanded") !== "true") {
+            return null;
+        }
+
+        const resultsId = dropdown.getAttribute("aria-controls");
+
+        if (!resultsId) return null;
+
+        const results = document.getElementById(resultsId);
+
+        if (!results) return null;
+
+        const options = [...results.querySelectorAll('li[role="option"]')]
+            .filter(option => option.getAttribute("aria-disabled") !== "true")
+            .map(option => ({
+                index: option.getAttribute("data-idx"),
+                text: option.textContent.trim(),
+                id: option.id
+            }));
+
+        return {
+            results_id: resultsId,
+            options: options
+        };
+    }
+    """
+
+    dropdown_details = active_element.evaluate(dropdown_script)
+
+    if not dropdown_details:
+        return False, state
+
+    results_id = dropdown_details["results_id"]
+    options = dropdown_details["options"]
+
+    if not options:
+        return False, state
+
+    total_options = [option["text"] for option in options]
+
+    # Let the LLM choose the desired option.
+    desired_option, state = adaptive_select_process(current_answer=current_answer, total_options=total_options, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    if desired_option is None:
+        return False, state
+
+    try:
+        desired_option = int(desired_option)
+    except (TypeError, ValueError):
+        return False, state
+
+    if not 0 <= desired_option < len(options):
+        return False, state
+
+    selected_option = options[desired_option]
+    desired_text = selected_option["text"]
+    option_id = selected_option["id"]
+
+    # Click the selected option using JavaScript.
+    clicked = page.evaluate("""
+    ({resultsId, optionId, desiredText}) => {
+        const results = document.getElementById(resultsId);
+        const option = document.getElementById(optionId);
+
+        if (!results || !option || !results.contains(option)) return false;
+        if (option.textContent.trim() !== desiredText) return false;
+        if (option.getAttribute("aria-disabled") === "true") return false;
+
+        option.click();
+        return true;
+    }
+    """, {"resultsId": results_id, "optionId": option_id, "desiredText": desired_text})
+
+    if not clicked:
+        return False, state
+
+    # Review the selected answer.
+    complete, state = review_quick_process(current_answer=current_answer, desired_text=desired_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    return complete, state
+
+def quick_workday_select_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    active_element = page.locator(":focus")
+    has_type = False
+
+    if active_element.count() == 1:
+        tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+        haspopup = active_element.get_attribute("aria-haspopup")
+        has_type = tag_name == "button" and haspopup == "listbox"
+
+    if not has_type:
+        active_element = page.evaluate_handle("document.activeElement").as_element()
+
+        if active_element:
+            tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+            haspopup = active_element.get_attribute("aria-haspopup")
+            has_type = tag_name == "button" and haspopup == "listbox"
+
+    if has_type:
+        listbox_id = active_element.get_attribute("aria-controls")
+
+        if listbox_id:
+            listbox = page.locator(f'[role="listbox"][id="{listbox_id}"]:visible')
+        else:
+            listbox = page.locator('[role="listbox"]:visible')
+
+        if listbox.count() != 1:
+            return False, state
+
+        option_locator = listbox.locator('[role="option"]')
+        options = [option.strip() for option in option_locator.all_text_contents()]
+
+        if not options:
+            return False, state
+
+    else:
+        return False, state
+
+    prompt = f"""
+You're an AI Applicant helper in the quick workdays select prompt.
+
+You're job is to look at the current question, the options, and the User Profile to determine out desired option.
+
+Current Question: {current_answer}
+
+Options: {options}
+
+Example Output 1: {{option: 2}}
+
+Example Output 2: {{option: None}}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+
+    response = quick_select_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt}
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+
+    answer = response["parsed"]
+    desired_option = answer.get("option")
+
+    if not isinstance(desired_option, int) or isinstance(desired_option, bool) or desired_option < 0 or desired_option >= len(options):
+        return False, state
+
+    desired_text = options[desired_option]
+
+    if not desired_text:
+        return False, state
+
+    try:
+        selected_option = option_locator.nth(desired_option)
+
+        if not selected_option.is_visible() or selected_option.get_attribute("aria-disabled") == "true":
+            return False, state
+
+        selected_option.click(timeout=3000)
+
+    except Exception:
+        return False, state
+
+    complete, state = review_quick_process(current_answer=current_answer, desired_text=desired_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    return complete, state
+
+
+def quick_greenhouse_select_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    active_element = page.locator(":focus")
+    has_type = False
+
+    if active_element.count() == 1:
+        tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+        role = active_element.get_attribute("role")
+        aria_autocomplete = active_element.get_attribute("aria-autocomplete")
+        has_type = tag_name == "input" and role == "combobox" and aria_autocomplete == "list"
+
+    if not has_type:
+        active_element = page.evaluate_handle("document.activeElement").as_element()
+
+        if active_element:
+            tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+            role = active_element.get_attribute("role")
+            aria_autocomplete = active_element.get_attribute("aria-autocomplete")
+            has_type = tag_name == "input" and role == "combobox" and aria_autocomplete == "list"
+
+    if has_type:
+        listbox_id = active_element.get_attribute("aria-controls")
+
+        if not listbox_id:
+            return False, state
+
+        listbox = page.locator(f'[role="listbox"][id="{listbox_id}"]:visible')
+
+        if listbox.count() != 1:
+            return False, state
+
+        option_locator = listbox.locator('[role="option"]')
+        options = [option.strip() for option in option_locator.all_text_contents()]
+
+        if not options:
+            return False, state
+
+    else:
+        return False, state
+
+    prompt = f"""
+You're an AI Applicant helper in the quick workdays select prompt.
+
+You're job is to look at the current question, the options, and the User Profile to determine out desired option.
+
+Current Question: {current_answer}
+
+Options: {options}
+
+Example Output 1: {{option: 2}}
+
+Example Output 2: {{option: None}}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+
+    response = quick_select_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt}
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+
+    answer = response["parsed"]
+    desired_option = answer.get("option")
+
+    if not isinstance(desired_option, int) or isinstance(desired_option, bool) or desired_option < 0 or desired_option >= len(options):
+        return False, state
+
+    desired_text = options[desired_option]
+
+    if not desired_text:
+        return False, state
+
+    try:
+        selected_option = option_locator.nth(desired_option)
+
+        if not selected_option.is_visible() or selected_option.get_attribute("aria-disabled") == "true":
+            return False, state
+
+        selected_option.click(timeout=3000)
+
+    except Exception:
+        return False, state
+
+    complete, state = review_quick_process(current_answer=current_answer, desired_text=desired_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    return complete, state
+
+
+def quick_time_process(current_answer: dict, date_type: str, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    active_element = page.locator(":focus")
+    has_type = False
+
+    if date_type not in ["date", "month"]:
+        return False, state
+
+    if active_element.count() == 1:
+        tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+        element_type = active_element.get_attribute("type")
+        has_type = tag_name == "input" and element_type == date_type
+
+    if not has_type:
+        active_element = page.evaluate_handle("document.activeElement").as_element()
+
+        if active_element:
+            tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+            element_type = active_element.get_attribute("type")
+            has_type = tag_name == "input" and element_type == date_type
+
+    if not has_type:
+        return False, state
+
+    prompt = f"""
+
+You're an AI Applicant Helper in the quick time Process.
+
+You're goal in the quick time process is to look at the current question, input type, and user profile to answer the question.
+
+Example response 1
+
+{{
+
+year: 2029,
+
+month: 8,
+
+day: 30
+
+}}
+
+Example response 2
+
+{{
+
+year: 1998,
+
+month: 12,
+
+day: None
+
+}}
+
+Current Question: {current_answer}
+
+Date type: {date_type}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+
+"""
+
+    response = quick_time_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt
+                }
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+
+    answer = response["parsed"]
+
+    year = answer.get("year")
+    month = answer.get("month")
+    day = answer.get("day")
+
+    if year is None or month is None:
+        return False, state
+
+    try:
+        year = int(year)
+        month = int(month)
+
+        if date_type == "date":
+            if day is None:
+                return False, state
+
+            day = int(day)
+            desired_text = datetime(year, month, day).strftime("%Y-%m-%d")
+
+        elif date_type == "month":
+            desired_text = datetime(year, month, 1).strftime("%Y-%m")
+
+    except (ValueError, TypeError, OverflowError):
+        return False, state
+
+    try:
+        active_element.fill(desired_text)
+    except Exception:
+        print("active element filling didn't work")
+        return False, state
+
+    complete, state = review_quick_process(current_answer=current_answer, desired_text=desired_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    return complete, state
+
+def adaptive_quick_time_process(current_answer: dict, date_type: str, state: ApplicationState):
+    page = state["current_page"]
+    prompt = f"""
+You're an AI Applicant Helper in the adaptive quick time process.
+
+You will look at the current question, the date_type, and the USER Profile to answer the question.
+
+Current Question: {current_answer}
+
+Date Type: {date_type}
+
+If the date type is year your example response format will be this.
+
+{{
+year: 2028
+}}
+
+If the date type is month your example response format will be this.
+
+{{
+year: 2024
+month: 10
+}}
+
+If the date type is day your example response format will be this.
+
+{{
+year: 2007
+month: 14
+day: 29
+}}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+    response = quick_time_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    year = answer.get("year")
+    month = answer.get("month")
+    day = answer.get("day")
+    return year, month, day, state
+    
+
+def quick_search_process(current_answer: dict, incorrect_searches: list, allowed_multiple_searches: bool, state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    prompt = f"""
+You're an AI Applicant in the quick search process.
+
+You're job is to look at the current Question and the USER PROFILE to answer the Current question with a list of text as the response
+
+You will also look at the list of incorrect searches so far and then see if we are allowed to give multiple searches or not.
+
+
+Current Question: {current_answer}
+
+Allowed Multiple Searches: {allowed_multiple_searches}
+
+Incorrect Searches: {incorrect_searches}
+
+Example Response 1: {{list_text: [state]}}
+
+IF we should have multiple searches and we are allowed then you can do something like this.
+Example Response 2: {{list_text: [skill 1, skill 2, skill 10]}}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+    response = quick_search_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    list_text = answer.get("list_text")
+    return list_text, state
+
+def quick_smart_recruiters_select_or_search_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    active_element = page.locator(":focus")
+    has_type = False
+
+    if active_element.count() == 1:
+        tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+        input_type = active_element.get_attribute("type")
+        role = active_element.get_attribute("role")
+        aria_autocomplete = active_element.get_attribute("aria-autocomplete")
+        aria_haspopup = active_element.get_attribute("aria-haspopup")
+        has_type = tag_name == "input" and input_type == "text" and role == "combobox" and aria_autocomplete in ["list", "both"] and aria_haspopup == "listbox"
+
+    if not has_type:
+        active_element = page.evaluate_handle("document.activeElement").as_element()
+
+        if active_element:
+            tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+            input_type = active_element.get_attribute("type")
+            role = active_element.get_attribute("role")
+            aria_autocomplete = active_element.get_attribute("aria-autocomplete")
+            aria_haspopup = active_element.get_attribute("aria-haspopup")
+            has_type = tag_name == "input" and input_type == "text" and role == "combobox" and aria_autocomplete in ["list", "both"] and aria_haspopup == "listbox"
+
+    if not has_type:
+        return False, state
+
+    dropdown_script = """
+    (element) => {
+        let current = element;
+
+        while (current) {
+            if (current.tagName?.toLowerCase() === "spl-dropdown") {
+                return current;
+            }
+
+            current = current.parentElement || current.getRootNode()?.host;
+        }
+
+        return null;
+    }
+    """
+
+    dropdown_handle = active_element.evaluate_handle(dropdown_script)
+    dropdown = dropdown_handle.as_element()
+
+    if not dropdown:
+        return False, state
+
+    option_script = """
+    (element) => {
+        function findOptions(root) {
+            let options = [...root.querySelectorAll("spl-select-option")];
+
+            for (const child of root.querySelectorAll("*")) {
+                if (child.shadowRoot) {
+                    options.push(...findOptions(child.shadowRoot));
+                }
+            }
+
+            return options;
+        }
+
+        return findOptions(element).map((option, index) => ({
+            index: index,
+            value: option.getAttribute("value"),
+            text: option.textContent.trim(),
+            disabled: option.hasAttribute("disabled")
+        }));
+    }
+    """
+
+    click_script = """
+    (element, desiredIndex) => {
+        function findOptions(root) {
+            let options = [...root.querySelectorAll("spl-select-option")];
+
+            for (const child of root.querySelectorAll("*")) {
+                if (child.shadowRoot) {
+                    options.push(...findOptions(child.shadowRoot));
+                }
+            }
+
+            return options;
+        }
+
+        const options = findOptions(element);
+        const option = options[desiredIndex];
+
+        if (!option || option.hasAttribute("disabled")) {
+            return false;
+        }
+
+        option.click();
+        return true;
+    }
+    """
+
+    def get_options():
+        all_options = dropdown.evaluate(option_script)
+        return [option for option in all_options if option["value"] != "#spl-custom-option" and option["text"] and not option["disabled"]]
+
+    options = get_options()
+    incorrect_searches = []
+
+    for attempt in range(3):
+        if options:
+            break
+
+        list_text, state = quick_search_process(current_answer=current_answer, incorrect_searches=incorrect_searches, allowed_multiple_searches=False, state=state)
+
+        if not isinstance(list_text, list) or len(list_text) != 1:
+            return False, state
+
+        search_text = str(list_text[0]).strip()
+
+        if not search_text or search_text.lower() in [str(search).lower() for search in incorrect_searches]:
+            return False, state
+
+        active_element.fill("")
+        page.keyboard.type(search_text)
+        page.wait_for_timeout(500)
+
+        options = get_options()
+
+        if not options:
+            incorrect_searches.append(search_text)
+
+    if not options:
+        return False, state
+
+    total_options = [option["text"] for option in options]
+
+    desired_option, state = adaptive_select_process(current_answer=current_answer, total_options=total_options, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    if not isinstance(desired_option, int) or isinstance(desired_option, bool) or not 0 <= desired_option < len(options):
+        return False, state
+
+    desired_text = options[desired_option]["text"]
+    desired_index = options[desired_option]["index"]
+
+    clicked = dropdown.evaluate(click_script, desired_index)
+
+    if not clicked:
+        return False, state
+
+    complete, state = review_quick_process(current_answer=current_answer, desired_text=desired_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    return complete, state
+
+from datetime import date
+
+def quick_smart_recruiters_time_process(current_answer: list, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    # First method: Playwright focused element.
+    active_element = page.locator(":focus")
+    has_type = False
+
+    check_script = """
+    (element) => {
+        return element.tagName.toLowerCase() === "input"
+            && element.type === "text"
+            && element.hasAttribute("data-input")
+            && element.classList.contains("flatpickr-input")
+            && element.getAttribute("aria-haspopup") === "grid";
+    }
+    """
+
+    if active_element.count() == 1:
+        has_type = active_element.evaluate(check_script)
+
+    # Second method: Deep focus through Shadow DOM.
+    if not has_type:
+        focus_script = """
+        () => {
+            let active = document.activeElement;
+
+            while (active?.shadowRoot?.activeElement) {
+                active = active.shadowRoot.activeElement;
+            }
+
+            return active;
+        }
+        """
+
+        active_element = page.evaluate_handle(focus_script).as_element()
+
+        if active_element:
+            has_type = active_element.evaluate(check_script)
+
+    if not has_type:
+        return False, state
+
+    # Locate the Flatpickr instance and inspect its configuration.
+    flatpickr_script = """
+    (element) => {
+        let current = element;
+
+        while (current) {
+            if (current._flatpickr) {
+                const fp = current._flatpickr;
+
+                return {
+                    found: true,
+                    date_format: fp.config.dateFormat,
+                    alt_format: fp.config.altFormat,
+                    enable_time: fp.config.enableTime,
+                    month_picker: !!fp.config.plugins?.some(plugin => String(plugin).includes("monthSelect"))
+                };
+            }
+
+            current = current.parentElement || current.getRootNode()?.host;
+        }
+
+        return {found: false};
+    }
+    """
+
+    flatpickr_details = active_element.evaluate(flatpickr_script)
+
+    if not flatpickr_details["found"]:
+        return False, state
+
+    # Determine which date components the field expects.
+    date_format = flatpickr_details.get("date_format") or ""
+    alt_format = flatpickr_details.get("alt_format") or ""
+
+    if flatpickr_details.get("month_picker"):
+        date_type = "month"
+    elif "d" in date_format or "j" in date_format:
+        date_type = "day"
+    elif any(token in date_format for token in ["m", "n", "M", "F"]):
+        date_type = "month"
+    elif "Y" in date_format or "y" in date_format:
+        date_type = "year"
+    elif "d" in alt_format or "j" in alt_format:
+        date_type = "day"
+    else:
+        date_type = "month"
+
+    # Ask the LLM to determine the appropriate date.
+    year, month, day, state = adaptive_quick_time_process(current_answer=current_answer, date_type=date_type, state=state)
+
+    # Validate and construct a complete date for Flatpickr.
+    try:
+        year = int(year)
+
+        if date_type == "year":
+            month = 1
+            day = 1
+
+        elif date_type == "month":
+            month = int(month)
+            day = 1
+
+        else:
+            month = int(month)
+            day = int(day)
+
+        selected_date = date(year, month, day)
+        date_value = selected_date.strftime("%Y-%m-%d")
+
+    except (TypeError, ValueError, OverflowError):
+        return False, state
+
+    # Set the date using the Flatpickr instance.
+    set_date_script = """
+    (element, dateValue) => {
+        let current = element;
+
+        while (current) {
+            if (current._flatpickr) {
+                const fp = current._flatpickr;
+
+                fp.setDate(dateValue, true, "Y-m-d");
+
+                return {
+                    success: fp.selectedDates.length > 0,
+                    value: element.value
+                };
+            }
+
+            current = current.parentElement || current.getRootNode()?.host;
+        }
+
+        return {success: false, value: null};
+    }
+    """
+
+    result = active_element.evaluate(set_date_script, date_value)
+
+    if not result["success"]:
+        return False, state
+
+    # Once the date is set, immediately review and return.
+    complete, state = review_quick_process(current_answer=current_answer, desired_text=result["value"], old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+    return complete, state
+
+def adaptive_quick_icims_select_process(current_answer: list, total_options: list[str], incorrect_searches: list, searchable: bool, state: ApplicationState):
+    page = state["current_page"]["page"]
+    prompt = f"""
+You're an AI Applicant Helper in the adaptive quick select process.
+
+You will look at the current question, total options, and user profile, and need to determine if any of the options answer the question based on the user profile.
+
+Current Question: {current_answer}
+
+total_options: {total_options}
+
+Incorrect Searches: {incorrect_searches}
+
+Searchable: {searchable}
+
+If any of the options answer the question based off the user profile you will return something like this or if Searchable is False then we must choose one of the options that best answer the question.
+
+Ex: {{desired_option: 20}}
+
+If none of the options answer the current question then we need to search for our own option.
+
+The search must be one word that has the best chance at finding it in a search based process.
+
+Also look at the incorrect searches to make sure you don't search the same thing again.
+
+Ex: {{list_text: [skill 10]}}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+    response = quick_select_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    desired_option = answer.get("desired_option")
+    list_text = answer.get("list_text")
+    return desired_option, list_text, state
+
+def quick_icimis_select_or_search_process(current_answer: list, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    # First method: Find the focused element through Playwright.
+    active_element = page.locator(":focus")
+    has_type = False
+
+    check_script = """
+    (element) => {
+        return element.matches("input.dropdown-search, span.dropdown-text, .dropdown-container, .icimsDropdown, .dropdown-results, li.dropdown-result")
+            || !!element.closest(".dropdown-container, .icimsDropdown, .dropdown-results");
+    }
+    """
+
+    if active_element.count() == 1:
+        has_type = active_element.evaluate(check_script)
+
+    # Second method: Find the deeply focused element.
+    if not has_type:
+        focus_script = """
+        () => {
+            let active = document.activeElement;
+
+            while (active?.shadowRoot?.activeElement) {
+                active = active.shadowRoot.activeElement;
+            }
+
+            return active;
+        }
+        """
+
+        active_element = page.evaluate_handle(focus_script).as_element()
+
+        if active_element:
+            has_type = active_element.evaluate(check_script)
+
+    # Find the currently visible iCIMS dropdown.
+    dropdown_script = """
+    () => {
+        const results = [...document.querySelectorAll("ul.dropdown-results")]
+            .find(element => {
+                const style = getComputedStyle(element);
+
+                return element.getClientRects().length > 0
+                    && style.visibility !== "hidden"
+                    && style.display !== "none";
+            });
+
+        if (!results) return null;
+
+        const searchInput = [...document.querySelectorAll("input.dropdown-search")]
+            .find(input => {
+                const style = getComputedStyle(input);
+
+                return input.getAttribute("aria-controls") === results.id
+                    && input.getClientRects().length > 0
+                    && style.visibility !== "hidden"
+                    && style.display !== "none";
+            });
+
+        return {
+            results_id: results.id,
+            searchable: !!searchInput
+        };
+    }
+    """
+
+    dropdown_details = page.evaluate(dropdown_script)
+
+    if not dropdown_details:
+        return False, state
+
+    results_id = dropdown_details["results_id"]
+    searchable = dropdown_details["searchable"]
+
+    # Retrieve all available options from the active dropdown.
+    options_script = """
+    (resultsId) => {
+        const results = document.getElementById(resultsId);
+
+        if (!results) return [];
+
+        return [...results.querySelectorAll("li.dropdown-result.result-selectable")]
+            .filter(element => {
+                const style = getComputedStyle(element);
+
+                return element.getClientRects().length > 0
+                    && style.visibility !== "hidden"
+                    && style.display !== "none";
+            })
+            .map(element => ({
+                text: element.textContent.trim(),
+                id: element.id
+            }));
+    }
+    """
+
+    incorrect_searches = []
+
+    # Initial evaluation + maximum of 3 searches.
+    for attempt in range(4):
+        time.sleep(5)
+
+        options = page.evaluate(options_script, results_id)
+        total_options = [option["text"] for option in options]
+
+        if not total_options and not searchable:
+            return False, state
+
+        desired_option, list_text, state = adaptive_quick_icims_select_process(current_answer=current_answer, total_options=total_options, incorrect_searches=incorrect_searches, searchable=searchable, state=state)
+
+        # Select one of the available options.
+        if desired_option is not None:
+            try:
+                desired_option = int(desired_option)
+            except (TypeError, ValueError):
+                return False, state
+
+            if not 0 <= desired_option < len(options):
+                return False, state
+
+            selected_option = options[desired_option]
+            desired_text = selected_option["text"]
+            option_id = selected_option["id"]
+
+            clicked = page.evaluate("""
+            ({resultsId, optionId, desiredText}) => {
+                const results = document.getElementById(resultsId);
+                const option = document.getElementById(optionId);
+
+                if (!results || !option || !results.contains(option)) return false;
+                if (option.textContent.trim() !== desiredText) return false;
+
+                option.click();
+                return true;
+            }
+            """, {"resultsId": results_id, "optionId": option_id, "desiredText": desired_text})
+
+            if not clicked:
+                return False, state
+
+            complete, state = review_quick_process(current_answer=current_answer, desired_text=desired_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+
+            return complete, state
+
+        # Stop if searching is unavailable or all 3 searches have been used.
+        if not searchable or attempt == 3:
+            return False, state
+
+        if not isinstance(list_text, list) or not list_text:
+            return False, state
+
+        search_text = str(list_text[0]).strip().lower()
+
+        if not search_text or search_text in incorrect_searches:
+            return False, state
+
+        # Clear the current search using keyboard actions.
+        for i in range(1000):
+            page.keyboard.press("ArrowRight")
+
+        for i in range(1000):
+            page.keyboard.press("Backspace")
+
+        # Type the new search term.
+        page.keyboard.type(search_text)
+
+        incorrect_searches.append(search_text)
+
+    return False, state
+
+def review_quick_process(current_answer: list, desired_text: str, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    if full_page_height == old_page_height:
+        encoded_bytes, cut_off_bottom_height, cut_off_top_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
+    else:
+        encoded_bytes, cut_off_bottom_height, cut_off_top_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=old_boxes_details, full_page_width=full_page_width, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+    encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
+
+    page_elements = []
     for i in range(len(boxes_details)):
         current_box = boxes_details[i]
-        box = current_box["bbox"]
-        y1 = box[1]
-        updated_y1 = (y1 * cropped_height) + cropped_height_diff
-        updated_ratio_y1 = updated_y1 / height_image2
-        boxes_details[i]["bbox"][1] = updated_ratio_y1
-        y2 = box[3]
-        updated_y2 = (y2 * cropped_height) + cropped_height_diff
-        updated_ratio_y2 = updated_y2 / height_image2
-        boxes_details[i]["bbox"][3] = updated_ratio_y2
-    print("Normal cropped image process")
-    return encoded_bytes, boxes_details, encoded_cropped_bytes
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, content])
 
-def extra_steps_process(current_question: str, state: ApplicationState, encoded_bytes=None):
+    prompt = f"""
+
+You're an AI Applicant Helper in the review quick process.
+
+Current Question: {current_answer}
+
+Desired Answer: {desired_text}
+
+You have to look at the current question and it's if answer, if there is no answer or the answer is incorrect to the desired text stop and return.
+- {{“action”: None, complete: False}}
+
+If the answer is correctly answered follow this subprocess.
+
+If the image does not have some exit button to leave the current question then return this.
+{{action: white_pixel, icon: -1, complete: True}} 
+
+Page Elements Format:
+[icon, type, coordinates, content]
+
+Page Elements: {page_elements}
+
+If the image does have some exit button to leave the current question then return something like this.
+- look at the image and the Page Elements to find the icon to click to exit.
+- {{action: click, icon: 8, complete: True}}
+
+"""
+
+    response = review_quick_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/png;base64,{encoded_bytes}"
+                    }
+                }
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+
+    state = ai_token_tracker(
+        new_tokens=new_tokens,
+        model_name=model_name,
+        state=state
+    )
+
+    answer = response["parsed"]
+    print(f"review quick answer: {answer}")
+
+    action = answer.get("action")
+    icon = answer.get("icon")
+    complete = answer.get("complete")
+
+    if not action:
+        return False, state
+
+    context = state.get("context")
+    page_count = len(context.pages)
+
+    if action == "white_pixel":
+        state = execute_action(
+            current_answer=["white_pixel", -1],
+            current_box=-1,
+            full_page_width=full_page_width,
+            full_page_height=full_page_height,
+            page_count=page_count,
+            state=state
+        )
+
+        return True, state
+
+    if action == "click":
+        if (
+            not isinstance(icon, int)
+            or isinstance(icon, bool)
+            or icon < 0
+            or icon >= len(boxes_details)
+        ):
+            return False, state
+
+        current_box = boxes_details[icon]
+
+        state = execute_action(
+            current_answer=["click", icon],
+            current_box=current_box,
+            full_page_width=full_page_width,
+            full_page_height=full_page_height,
+            page_count=page_count,
+            state=state
+        )
+        return True, state
+
+    return False, state
+
+def workday_select_options(state: ApplicationState):
     page = state["current_page"]["page"]
-    pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
+    active_element = page.locator(":focus")
+
+    if active_element.count() != 1:
+        return []
+
+    tag_name = active_element.evaluate("(element) => element.tagName.toLowerCase()")
+    haspopup = active_element.get_attribute("aria-haspopup")
+
+    if tag_name == "button" and haspopup == "listbox":
+        listbox_id = active_element.get_attribute("aria-controls")
+
+        if listbox_id:
+            listbox = page.locator(f'[role="listbox"][id="{listbox_id}"]:visible')
+        else:
+            listbox = page.locator('[role="listbox"]:visible')
+
+        if listbox.count() != 1:
+            return []
+
+        options = listbox.locator('[role="option"]').all_text_contents()
+
+        return [option.strip() for option in options if option.strip()]
+
+    return []
+
+def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_width: int, old_page_height: int, cut_off_height: int, page_x: int, page_y: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    active_element = page.locator(":focus")
+    select_tag = False
+    time_type = False
+
+    if active_element.count() > 0:
+        select_tag = active_element.evaluate(
+            "(el) => el.tagName.toLowerCase() === 'select'"
+        )
+        date_type = active_element.get_attribute("type") in ["date", "month"]
+
+    if not select_tag and not time_type:
+        select_tag = page.evaluate(
+            "() => document.activeElement?.tagName.toLowerCase() === 'select'"
+        )
+        time_type = page.evaluate(
+            "() => ['date', 'month'].includes(document.activeElement?.getAttribute('type'))"
+        )
+
+    if select_tag:
+        complete, state = quick_select_process(
+            current_answer=current_answer,
+            old_encoded_bytes=old_encoded_bytes,
+            old_boxes_details=old_boxes_details,
+            old_page_height=old_page_height,
+            cut_off_height=cut_off_height,
+            state=state
+        )
+
+        if complete:
+            return state
+
+    elif time_type:
+        complete, state = quick_time_process(
+            current_answer=current_answer,
+            date_type=date_type,
+            old_encoded_bytes=old_encoded_bytes,
+            old_boxes_details=old_boxes_details,
+            old_page_height=old_page_height,
+            cut_off_height=cut_off_height,
+            state=state
+        )
+
+        if complete:
+            return state
+    pyautogui_image = pyautogui.screenshot(region=(10, 40, old_page_width, 910))
     buffer = io.BytesIO()
     pyautogui_image.save(buffer, format="PNG")
     pyautogui_bytes = buffer.getvalue()
@@ -2167,27 +3928,41 @@ def extra_steps_process(current_question: str, state: ApplicationState, encoded_
     pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
     pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=boxes_details)
-    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+    desired = boxes_details[4]
+    bbox = desired["bbox"]
+    page_x, page_y = coordinates_process(coordinates=bbox, full_page_width=full_page_width, full_page_height=full_page_height)
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+    if current_height == old_page_height:
+        encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
+    else:
+        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
+    encoded_bytes, boxes_details, do_not_use1, do_not_use2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    comparison_page_width2, comparison_page_height2 = image.size
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
     page_elements = []
     for i in range(len(boxes_details)):
         current_box = boxes_details[i]
         icon = current_box["icon"]
-        box_type = current_box["type"]
         bbox = current_box["bbox"]
         coordinates = [round(bbox[0], 0), round(bbox[1], 0), round(bbox[2], 0), round(bbox[3], 0)]
         content = current_box["content"]
-        page_elements.append(icon, box_type, coordinates, content)
-    
+        page_elements.append([icon, coordinates, content])
+    print(f"extra steps boxes details: {boxes_details}")
     prompt = f"""
 You're an AI Applicant in the Extra Step Process with only looking at the current question.
 
 You will only be looking at the current question during this process.
 
-Current Question: {current_question}
+Current Question: {current_answer}
 
 PAGE ELEMENTS FORMAT
-[icon, type, coordinates, content]
+[icon, coordinates, content]
 
 Page Elements: {page_elements}
 
@@ -2197,30 +3972,35 @@ You will Follow the Extra Steps Process to complete this question.
 
 Extra Steps Process
 
-1. First you need to determine what type of action we will be taking and the options you have are, markdown, search, and time.
-    - Markdown: if you see options for the current question that means we are using the markdown action.
+1. First you need to determine what type of action we will be taking and the options you have are, dropdown, search, and time.
+    - dropdown: if you see options for the current question that means we are using the dropdown action.
     - Search: If there're no options available for the current question and this is not a time question that means we are using the search action.
     - Time: If you see for the current question that there is no options and it is a time question we will be using the time action.
 
 How to handle each action.
 
-How to Handle markdown Action
+How to Handle dropdown Action
 
 1. First look at the body text and the image and find all the options for the current question
 2. Determine if you can click the option you want to click look at the page elements in image 1. If you can stop and return something like this.
-    - Ex: {{action: markdown, action_type: click, 19}}
+    - You need to find the right icon to click, then list the current_option, option choice, total_options, first_text, and desired_text, determine if image1 has options, determine if image2 has options.
+    - Ex: {{action: dropdown, dropdown_type: click, icon: 19, current_option: 0, desired_option: 8, total_options: 10, first_text: ex, desired_text: yes, image1: True, image2: False}}
 3. If you can't click the icon that is available then you need to find the current_option that we are on in the image, then find the option number that we want to go to, return something like this.
-    - Ex: {{action: markdown, action_type: arrow, current_option: 12, option_choice: 5}}
+    - You need to find the current_option, the option_choice, the total_options available, the first_text (the first option), and the desired_text, determine if image1 has options, determine if image2 has options.
+    - Ex: {{action: dropdown, dropdown_type: arrow, current_option: 12, desired_option: 5, total_options: 24, first_text: Alabama, desired_text: example, image1: True, image2: True}}
 
 How to Handle the search Action
 
 1. First look at the current question and the USER PROFILE and decide what is the best way to answer this, with the highest likelihood that a suggestion pops up for the answer.
 2. Some Search Action will need a list of answers and some will just need one individual answer. Your job is to look at the current question and the USER PROFILE to be able to determine if it is a single word type of response or is it multiple single word responses need to be inputed.
-    - Ex 1: {{action: search, text_option: [no]}}
-    - Ex 2: {{action: search, text_options: [skill 1, skill 2, skill 3]}}
+    - Ex 1: {{action: search, list_text: [college]}}
+    - Ex 2: {{action: search, list_text: [skill 1, skill 2, skill 3]}}
 
 How to Handle the time Action:
+If the Time has dropdown options, go back up to the dropdown subprocess and choose that.
+If the time has a calendar popup is the only time you follow the calendar process.
 
+Do not choose the Time action if it doesn't have a calendar popup.
 1. First look at the current question and the format for the question and then the USER PROFILE and determine what the desired_date should be.
 2. Determine how many arrows to the left do we need to be to be at the farthest point to the left of the current question.
 3. Next determine which images have the calendar popup, image1 and image2 can both be true and false
@@ -2231,11 +4011,11 @@ How to Handle the time Action:
 
 Actions Descriptions
 
-markdown - When the current question has options always choose the markdown option.
+dropdown - When the current question has options and we don't need to search/input any text always choose the dropdown option.
 
 search - When the current question has no options and is not a time question choose the search search action.
 
-time - When the current question has no options and it is a time question choose the time action.
+time - You only choose the time action when you see Time AND a CALENDAR Popup.
 
 USER PROFILE
 
@@ -2295,7 +4075,6 @@ Cover Letter:
 If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
 """
 
-
     response = extra_steps_process_llm2.invoke([
         {
             "role": "user",
@@ -2307,7 +4086,7 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
         }
     ])
     details = response["raw"]
-    new_tokens, model_name = details_process(new_tokens=new_tokens, model_name=model_name, state=state)
+    new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
     answer = response["parsed"]
     print(f"extra steps answer: {answer}")
@@ -2315,23 +4094,58 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
     action_type = answer.get("action_type")
     icon = answer.get("icon")
     current_option = answer.get("current_option")
-    option_choice = answer.get("option_choice")
-    text_options = answer.get("text_options")
+    desired_option = answer.get("desired_option")
+    total_options = answer.get("total_options")
+    first_text = answer.get("first_text")
+    desired_text = answer.get("desired_text")
+    list_text = answer.get("list_text")
     desired_date = answer.get("desired_date")
     left_arrow = answer.get("left_arrow")
     image1 = answer.get("image1")
     image2 = answer.get("image2")
-    if action == "markdown":
+    if action == "dropdown":
+        if action_type == "arrow":
+            if current_option and desired_option:
+                option_difference = desired_option - current_option
+                if not image1 and image2:
+                    page.mouse.click(page_x, page_y)
+                if option_difference == 0:
+                    pyautogui.hotkey("enter")
+                elif option_difference > 0:
+                    for i in range(option_difference):
+                        pyautogui.hotkey("down")
+                else:
+                    for i in range(abs(option_difference)):
+                        pyautogui.hotkey("up")
         if action_type == "click":
-            return state
+            context = state.get("context")
+            page_count = len(context.pages)
+            new_answer = ["click", icon]
+            current_box = boxes_details[icon]
+            current_bbox = current_box["bbox"]
+            new_page_height = max_cut_off_height - min_cut_off_height
+            desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, old_page_height=full_page_height, new_page_height=new_page_height, desired_bbox=current_bbox)
+            current_box["bbox"] = desired_box
+            middle_x, middle_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
+            print("---------------------------------------------------------------------------------------------")
+            pyautogui.moveTo(middle_x * full_page_width, middle_y * full_page_height)
+            time.sleep(5)
+            state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+        print("going to dropdown process")
+        state = dropdown_process(current_answer=current_answer, previous_action=action_type, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, page_x=page_x, page_y=page_y, first_text=first_text, desired_text=desired_text, desired_option=desired_option, total_options=total_options, image1=image1, image2=image2, state=state)
+    elif action == "search":
+        state = search_process(current_answer=current_answer, list_text=list_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, page_x=page_x, page_y=page_y, first_text=first_text, desired_text=desired_text, desired_option=desired_option, total_options=total_options, state=state)
+    elif action == "time":
+        state = time_process(current_answer=current_answer, desired_date=desired_date, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, full_page_width=full_page_width, page_x=page_x, page_y=page_y, image1=image1, image2=image2, state=state)
     return state
 
 def extra_steps_action(current_answer: list, full_page_width: int, full_page_height: int, state: ApplicationState, boxes_details=None):
     page = state["current_page"]["page"]
+    encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
     context = state.get("context")
     page_count = len(context.pages)
     action = current_answer[0]
-    if action == "markdown":
+    if action == "dropdown":
         action_type = current_answer[1]
         if action_type == "click":
             icon = current_answer[2]
@@ -2339,7 +4153,7 @@ def extra_steps_action(current_answer: list, full_page_width: int, full_page_hei
             current_answer = [action_type, icon]
             print("markdown action in extra steps")
             state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
-            state = markdown_process()
+            state = dropdown_process()
             return state
         else:
             current_answer
@@ -2348,18 +4162,379 @@ def extra_steps_action(current_answer: list, full_page_width: int, full_page_hei
     elif action == "time":
         print("time action in extra steps")
 
-def time_process(current_question: str, full_page_width: int, page_x: int, page_y: int, state: ApplicationState):
+def normalize_text(content: str):
+    return "".join(char.lower() for char in content if char.isalpha())
+
+def compare_text(text1: str, text2: str, max_difference: int = 3) -> bool:
+    text1 = normalize_text(text1)
+    text2 = normalize_text(text2)
+
+    if abs(len(text1) - len(text2)) > max_difference:
+        return False
+
+    previous = list(range(len(text2) + 1))
+
+    for i, char1 in enumerate(text1, 1):
+        current = [i]
+
+        for j, char2 in enumerate(text2, 1):
+            cost = 0 if char1 == char2 else 1
+
+            current.append(min(
+                previous[j] + 1,
+                current[j - 1] + 1,
+                previous[j - 1] + cost
+            ))
+
+        if min(current) > max_difference:
+            return False
+
+        previous = current
+
+    return previous[-1] <= max_difference
+
+def setup_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, first_text: str, cut_off_height: int, state: ApplicationState):
     page = state["current_page"]["page"]
-    state, desired_date, image1, image2 = text_time_process(current_question=current_question, full_page_width=full_page_width, state=state)
+    first_text = normalize_text(first_text)
+    current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    if current_height == old_page_height:
+        encoded_bytes, min_cut_height, max_cut_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
+    else:
+        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        encoded_bytes, min_cut_height, max_cut_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
+    encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
+
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        current_icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([current_icon, box_type, coordinates, content])
+
+    prompt = f"""
+You're an AI Applicant helper and your job is to look at all the Page Elements
+and tell me which icon or icons match the first text.
+
+Sometimes multiple icons combined can make the first text.
+
+There is also a world where there is no first text option that matches the desired tect and in that case.
+- Return this: {{action: no_icon, icon: None}}
+There is also a world for the current question there are no options available and we would also return this.
+- Return this: {{action: no_icon, icon: None}}
+
+Here is the first text we are looking for.
+
+First Text: {first_text}
+
+Page Elements Format
+[icon, type, coordinates, content]
+
+Page Elements: {page_elements}
+
+Example Output 1:
+{{action: get_icon, "icon": [1]}}
+
+Example Output 2:
+{{action: get_icon, "icon": [3, 8, 10]}}
+"""
+    response = setup_select_process_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": prompt
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}
+                }
+            ]
+        }
+    ])
+
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(
+        new_tokens=new_tokens,
+        model_name=model_name,
+        state=state
+    )
+    first_text = ""
+    answer = response["parsed"]
+    action = answer.get("action")
+    if action == "no_icon":
+        return None, None, None, None, None, None, None, None, action, state
+    icon = answer.get("icon")
+    if not icon:
+        return None, None, None, None, None, None, None, None, action, state
+    for i in range(len(icon)):
+        current_icon = icon[i]
+        current_box = boxes_details[current_icon]
+        content = current_box["content"]
+        content = normalize_text(content)
+        first_text += content
+
+    current_box = boxes_details[icon[-1]]
+    zero_coordinate = min(boxes_details[i]["bbox"][0] for i in icon)
+    width_pixel = zero_coordinate * full_page_width
+    safe_x = [math.floor(width_pixel)-3, math.ceil(width_pixel)+3]
+    third_coordinate = max(boxes_details[i]["bbox"][3] for i in icon)
+    safe_elements = []
+    banned_options = []
+    first_option = boxes_details[icon[0]]
+    safe_y_axis = min(boxes_details[i]["bbox"][1] for i in icon)
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        current_zero_coordinate = current_box["bbox"][0]
+        current_width_pixel = current_zero_coordinate * full_page_width
+        content = current_box["content"]
+        content = normalize_text(content)
+        if current_width_pixel >= safe_x[0] and current_width_pixel <= safe_x[1]:
+            current_third_coordinate = current_box["bbox"][3]
+            if current_third_coordinate < safe_y_axis:
+                banned_options.append(content)
+            else:
+                safe_elements.append(current_box)
+        else:
+            banned_options.append(content)
+
+    closest_elements = []
+    for i in range(len(safe_elements)):
+        current_box = safe_elements[i]
+        if current_box["bbox"][1] > third_coordinate:
+            closest_elements.append(current_box)
+    closest_elements.sort(key=lambda current_box: current_box["bbox"][1])
+    if not closest_elements:
+        return None, None, None, None, None, None, None, None, "no_icon", state
+    closest_element = closest_elements[0]
+    image_height = max_cut_height - min_cut_height
+    scrolling = abs((closest_element["bbox"][1] - third_coordinate)) * image_height
+    safe_y = [math.floor(scrolling)-3, math.ceil(scrolling)+3]
+    options = []
+
+    first_x_coord = (
+        min(boxes_details[i]["bbox"][0] for i in icon)
+        + max(boxes_details[i]["bbox"][2] for i in icon)
+    ) / 2 * full_page_width
+
+    first_y_coord = (
+        min(boxes_details[i]["bbox"][1] for i in icon)
+        + max(boxes_details[i]["bbox"][3] for i in icon)
+    ) / 2 * image_height + min_cut_height
+    print(f"safe_x: {safe_x}, safe_y: {safe_y}, scrolling: {scrolling}, options: {options}, banned options: {banned_options}, first text: {first_text}, first_x_coord: {first_x_coord}, first_y_coord: {first_y_coord}, action: {action}")
+    return safe_x, safe_y, scrolling, options, banned_options, first_text, first_x_coord, first_y_coord, action, state
+
+def complete_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, safe_x: list[int], safe_y: list[int], scrolling: float, options: list, banned_options: list[str], first_text: str, first_x_coord: int, first_y_coord: int, desired_text: str, total_options: int, desired_option: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    comparison_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+
+    if old_page_height == full_page_height:
+        encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=comparison_bytes)
+        encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
+    else:
+        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=comparison_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, old_page_height=old_page_height, full_page_width=full_page_width, state=state)
+        encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
+
+    desired_text = normalize_text(desired_text)
+    first_text = normalize_text(first_text)
+    banned_options = [normalize_text(content) for content in banned_options]
+
+    reorganized_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i].copy()
+        current_x_axis = current_box["bbox"][0] * full_page_width
+
+        if current_x_axis < safe_x[0] or current_x_axis > safe_x[1]:
+            continue
+
+        content = normalize_text(current_box["content"])
+
+        if not content or content in banned_options:
+            continue
+        
+        current_box["content"] = content
+        reorganized_elements.append(current_box)
+
+    reorganized_elements.sort(key=lambda current_box: current_box["bbox"][1])
+
+    combined_elements = []
+    image_height = max_cut_off_height - min_cut_off_height
+
+    if reorganized_elements:
+        combined_elements.append(reorganized_elements[0])
+
+        for i in range(1, len(reorganized_elements)):
+            current_box = reorganized_elements[i]
+            recent_box = combined_elements[-1]
+
+            current_content = current_box["content"]
+            recent_content = recent_box["content"]
+
+            recent_y_axis = recent_box["bbox"][3]
+            current_y_axis = current_box["bbox"][1]
+
+            y_axis_difference = (current_y_axis - recent_y_axis) * image_height
+
+            if y_axis_difference > safe_y[1]:
+                break
+
+            elif y_axis_difference >= safe_y[0]:
+                combined_elements.append(current_box)
+
+            else:
+                content = recent_content + current_content
+
+                zero_coordinate = min(current_box["bbox"][0], recent_box["bbox"][0])
+                first_coordinate = min(current_box["bbox"][1], recent_box["bbox"][1])
+                second_coordinate = max(current_box["bbox"][2], recent_box["bbox"][2])
+                third_coordinate = max(current_box["bbox"][3], recent_box["bbox"][3])
+
+                bbox = [zero_coordinate, first_coordinate, second_coordinate, third_coordinate]
+
+                data = {
+                    "icon": recent_box["icon"],
+                    "type": "text",
+                    "bbox": bbox,
+                    "content": content,
+                }
+
+                combined_elements[-1] = data
+
+    while combined_elements:
+        current_content = combined_elements[0]["content"]
+
+        if any(
+            current_content == old_box["content"]
+            or current_content in old_box["content"]
+            for old_box in options
+        ):
+            combined_elements.pop(0)
+        else:
+            break
+    # Only remove the final element from the new scan.
+    if combined_elements:
+        last_element = combined_elements[-1]
+        last_content = normalize_text(last_element["content"])
+
+        if last_content != desired_text and len(options) + len(combined_elements) < total_options:
+            combined_elements.pop()
+            
+    # Keep all previous options and append the new ones.
+    old_options_length = len(options)
+    if len(combined_elements) > 0:
+        options.extend(combined_elements)
+
+    # First check for an exact text match.
+    for i in range(old_options_length, len(options)):
+        current_element = options[i]
+        current_text = normalize_text(current_element["content"])
+
+        if current_text == desired_text:
+            current_x = (current_element["bbox"][0] + current_element["bbox"][2]) / 2
+            current_y = (current_element["bbox"][1] + current_element["bbox"][3]) / 2
+
+            current_x *= full_page_width
+            current_y = (image_height * current_y) + min_cut_off_height
+
+            page.mouse.click(current_x, current_y)
+
+            return True, options, comparison_bytes, state
+        if i == desired_option:
+            desired_option_correct = compare_text(text1=desired_text, text2=current_text)
+            if desired_option_correct:
+                current_x = (current_element["bbox"][0] + current_element["bbox"][2]) / 2
+                current_y = (current_element["bbox"][1] + current_element["bbox"][3]) / 2
+
+                current_x *= full_page_width
+                current_y = (image_height * current_y) + min_cut_off_height
+
+                page.mouse.click(current_x, current_y)
+
+                return True, options, comparison_bytes, state
+
+    if len(combined_elements) > 0:
+        print("used last element in the combined elements")
+        first_element = combined_elements[0]
+        last_element = combined_elements[-1]
+
+        first_x = (first_element["bbox"][0] + first_element["bbox"][2]) / 2
+        first_y = (first_element["bbox"][1] + first_element["bbox"][3]) / 2
+
+        last_x = (last_element["bbox"][0] + last_element["bbox"][2]) / 2
+        last_y = (last_element["bbox"][1] + last_element["bbox"][3]) / 2
+
+        current_x = ((first_x + last_x) / 2) * full_page_width
+        current_y = ((first_y + last_y) / 2) * image_height + min_cut_off_height
+
+        page.mouse.move(current_x, current_y)
+        """elif len(options) > 0:
+        last_element = options[-1]
+        print(f"last element: {last_element}")
+        last_x = (last_element["bbox"][0] + last_element["bbox"][2]) / 2
+        last_y = (last_element["bbox"][1] + last_element["bbox"][3]) / 2
+        page.mouse.move(last_x, last_y"""
+    else:
+        print("used first element")
+        page.mouse.move(first_x_coord, first_y_coord)
+    page.mouse.wheel(0, scrolling * 3)
+    print(f"combined elements: {combined_elements}")
+    return False, options, comparison_bytes, state    
+
+
+def scroll_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_x: int, old_y: int, old_page_width: int, old_page_height: int, cut_off_height: int, first_text: str, desired_text: str, total_options: int, desired_option: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    safe_x, safe_y, scrolling, options, banned_options, new_first_text, first_x_coord, first_y_coord, action, state = setup_scroll_process(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, first_text=first_text, state=state)
+    if action == "no_icon" or not action or safe_x is None:
+        current_height = page.evaluate("""() => { return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight)}""")
+        if current_height == old_page_height:
+            page.mouse.click(old_x, old_y)
+        else:
+            page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+            page.mouse.click(page_x, page_y)
+        safe_x, safe_y, scrolling, options, banned_options, new_first_text, first_x_coord, first_y_coord, action, state = setup_scroll_process(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, first_text=first_text, state=state)
+        if action == "no_icon" or not action:
+            return state
+
+    same_bytes_tracker = 0
+    old_bytes = []
+    for i in range(total_options * 3):
+        complete, options, new_encoded_bytes, state = complete_scroll_process(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, safe_x=safe_x, safe_y=safe_y, scrolling=scrolling, options=options, banned_options=banned_options, first_text=new_first_text, first_x_coord=first_x_coord, first_y_coord=first_y_coord, desired_text=desired_text, total_options=total_options, desired_option=desired_option, state=state)
+        if complete:
+            break
+        if i == 0:
+            old_bytes.append(new_encoded_bytes)
+            continue
+        else:
+            comparison_byte = old_bytes[-1]
+            if compare_pixel(encoded_bytes1=comparison_byte, encoded_bytes2=new_encoded_bytes):
+                same_bytes_tracker += 1
+            else:
+                same_bytes_tracker = 0
+            if same_bytes_tracker >= 2:
+                print("same page twice and we need to leave")
+                break
+            old_bytes.append(new_encoded_bytes)
+    return state
+
+def time_process(current_answer: str, desired_date: str, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, full_page_width: int, page_x: int, page_y: int, image1: bool, image2: bool, state: ApplicationState):
+    page = state["current_page"]["page"]
+    """state, desired_date, image1, image2 = text_time_process(current_question=current_question, full_page_width=full_page_width, state=state)
     has_type = False
     active_element = page.locator(":focus")
     print(f"active element 1st: {active_element}")
     if active_element.count() > 0:
         has_type = active_element.get_attribute("type") in ["date", "month"]
     if not has_type:
-        active_element = page.evaluate_handle("document.activeElement")
-        has_type = page.evaluate("""() => ["date", "month"].includes(document.activeElement?.getAttribute("type"))""")
-        active_element = active_element.as_element()
+        active_element = page.evaluate_handle("document.activeElement")"""
+        # has_type = page.evaluate("""() => ["date", "month"].includes(document.activeElement?.getAttribute("type"))""")
+    """active_element = active_element.as_element()
 
     if has_type:
         print(f"active element: {active_element}")
@@ -2373,11 +4548,11 @@ def time_process(current_question: str, full_page_width: int, page_x: int, page_
         try:
             active_element.fill(desired_date)
         except Exception:
-            print("active element filling didn't work")
+            print("active element filling didn't work")"""
     
     previous_attempt = False
     for attempt in range(4):
-        state, image1, image2, page_x, page_y, previous_attempt, complete = calendar_time_process(current_question=current_question, desired_date=desired_date, image1=image1, image2=image2, full_page_width=full_page_width, page_x=page_x, page_y=page_y, current_attempt=attempt, previous_attempt=previous_attempt, state=state)
+        state, image1, image2, page_x, page_y, previous_attempt, complete = calendar_time_process(current_answer=current_answer, desired_date=desired_date, image1=image1, image2=image2, full_page_width=full_page_width, page_x=page_x, page_y=page_y, current_attempt=attempt, previous_attempt=previous_attempt, state=state)
         if complete:
             break
     current_answer = ["white_pixel", -1]
@@ -2956,7 +5131,7 @@ def day_calculator(current_day: int, current_month: int, current_year: int, desi
 def month_calculator(current_month: int, current_year: int, desired_month: int, desired_year: int):
     return (desired_year - current_year) * 12 + (desired_month - current_month)
 
-def calendar_time_process(current_question: str, desired_date: str, image1: bool, image2: bool, full_page_width: int, page_x: int, page_y: int, current_attempt: int, previous_attempt: False, state: ApplicationState):
+def calendar_time_process(current_answer: list, desired_date: str, image1: bool, image2: bool, full_page_width: int, page_x: int, page_y: int, current_attempt: int, previous_attempt: False, state: ApplicationState):
     page = state["current_page"]["page"]
     active_element = page.locator(":focus")
     print(f"calendar active element: {active_element}")
@@ -3007,7 +5182,7 @@ Your job is to determine if the question is correct, find the calendar popup, an
 
 You will only be looking at the current question this entire time and will ignore every other question.
 
-Current Question: {current_question}
+Current Question: {current_answer}
 
 Desired Date: {desired_date}
 
@@ -3163,12 +5338,12 @@ We are clicking the icon within image 2 page elements.
     if not action and not complete:
         print("going to use find time and review time process")
         previous_attempt = True
-        state, page_x, page_y, complete = find_time_process(current_question=current_question, desired_date=desired_date, state=state)
+        state, page_x, page_y, complete = find_time_process(current_question=current_answer, desired_date=desired_date, state=state)
         if complete:
             return state, image1, image2, page_x, page_y, previous_attempt, complete
-        state, image1, image2, page_x, page_y = review_find_time_process(current_question=current_question, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
+        state, image1, image2, page_x, page_y = review_find_time_process(current_question=current_answer, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
         if not image1 and not image2:
-            state, image1, image2, page_x, page_y = review_find_time_process(current_question=current_question, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
+            state, image1, image2, page_x, page_y = review_find_time_process(current_question=current_answer, full_page_width=full_page_width, page_x=page_x, page_y=page_y, state=state)
         return state, image1, image2, page_x, page_y, previous_attempt, complete
     if action:
         state = calendar_action_process(action=action, icon=icon, current_day=current_day, current_month=current_month, current_year=current_year, desired_day=desired_day, desired_month=desired_month, desired_year=desired_year, boxes_details=boxes_details, image2=image2, full_page_width=full_page_width, current_attempt=current_attempt, previous_attempt=previous_attempt, state=state)
@@ -3506,7 +5681,8 @@ Why we did that: There is currently no highlighted option in the photo and we ne
         time.sleep(2)
     return state
 
-def markdown_process(current_answer: list, ai_answers: list[list], state: ApplicationState, white_x=None, white_y=None):
+def markdown_process(current_answer: list, ai_answers: list[list], markdown_type: str, image1: bool, image2: bool, state: ApplicationState, white_x=None, white_y=None):
+    # state = time_process(current_answer=current_answer, desired_date=desired_date, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, cut_off_height=cut_off_height, page_x=page_x, page_y=page_y, state=state)
     page = state["current_page"]["page"]
     context = state.get("context")
     page_count = len(context.pages)
@@ -3515,6 +5691,7 @@ def markdown_process(current_answer: list, ai_answers: list[list], state: Applic
     print(f"markdown current question: {current_question}")
     complete = False
     for attempt in range(5):
+
         encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
         encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
         pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 780))
@@ -3752,6 +5929,402 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             state, fully_complete = complete_markdown_process(current_question=current_question, ai_answers=ai_answers, state=state)
             if fully_complete:
                 return state
+    return state
+
+def dropdown_process(current_answer: list, previous_action: str, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, page_x: int, page_y: int, first_text: str, desired_text: str, desired_option: str, total_options: int, image1: bool, image2: bool, state: ApplicationState):
+    print("we are at dropdown process")
+    print(f"current answer: {current_answer}")
+    page = state["current_page"]["page"]
+    context = state.get("context")
+    page_count = len(context.pages)
+    arrow_temp_status = True
+    arrow_permanent_status = False
+    needs_scroll = False
+    for i in range(5):
+        body_text = page.locator("body").inner_text() or None
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+        if full_page_height == old_page_height:
+            encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
+        else:
+            encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
+        encoded_bytes, boxes_details, do_not_use, do_not_use2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
+        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        buffer1 = io.BytesIO(decoded_bytes)
+        image1 = Image.open(buffer1)
+        image1.show()
+        if not image1:
+            pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
+            buffer = io.BytesIO()
+            pyautogui_image.save(buffer, format="PNG")
+            pyautogui_bytes = buffer.getvalue()
+            pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
+            data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+            response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+            data = response.json()
+            pyautogui_encoded_bytes = data["encoded_bytes"]
+            pyautogui_boxes_details = data["boxes_details"]
+            pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=pyautogui_boxes_details)
+        page_elements = []
+        for i in range(len(boxes_details)):
+            current_box = boxes_details[i]
+            icon = current_box["icon"]
+            box_type = current_box["type"]
+            bbox = current_box["bbox"]
+            coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+            content = current_box["content"]
+            page_elements.append([icon, box_type, coordinates, content])
+        if arrow_permanent_status:
+            prompt = f"""
+    You're an AI Applicant Helper in the Dropdown Process.
+
+    You will only be looking at the current question.
+    You will have to determine what type of action we will use and then answer the extra details that come with that action.
+
+    You will Follow the Dropdown Process to answer the current question.
+
+    Current Question: {current_answer}
+
+    Desired Answer: {desired_text}
+
+    Body Text: {body_text}
+
+    Page Elements Format:
+    [icon, type, coordinates, content]
+
+    Page Elements: {page_elements}
+
+    Dropdown Process:
+    1. First find the current question in the photo.
+    2. If the current question's answer is the desired answer, stop and follow this subprocess.
+
+    - If there are other questions on the screen or there is no exit icon stop and return something like this.
+    - Ex: {{action: “white_pixel”, icon: -1, complete: True}}
+    - If there is some type of exit icon that is needed to click to leave the current question then return something like this.
+    - Ex: {{action: “click”, icon: 8, complete: True}}
+
+    2. If there are options on the screen follow this subprocess.
+    - If the desired option is on the screen then click it. Return something like this.
+    - Ex: {{action: click, icon: 12}}
+    - If the desired option is not seen then follow this return process. 
+    - Find the current option in the photo and the desired option, the total amount of options, first option text that appears in the photo, desired text. Return something like this.
+    - Ex: {{action: arrow, current_option: 8, desired_option: 4, total_options: 80}}
+    - If there is text that needs to be inputted for the current question, find the icon that needs to be clicked and look at the User Profile to answer the Current Question.
+    - return something like this (just because there is a place to input text for the current question doesn't mean we need to input text, think logically to determine if we do or don't need to).
+    - You also need to determine if this requires a basic fill in or is this something we need to search for.
+    - If this is just a basic fill in text box then return something like this.
+    - Ex: {{action: fill, icon: 6, action_text: no}}
+    - If this is a text box where we need to search for the answer then return something like this.
+    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2]}}
+    - Ex: {{action: search, icon: 12, list_text: [skill 4]}}
+
+    3. If there is no options present follow this route
+    - Find the icon that is going to reopen the current question that will allow us to continue the drop down process.
+    - Ex: {{action: click, icon: 20}}
+
+    Account:
+    email={state["email"]}
+    password={state["password"]}
+
+    Personal:
+    first_name={state["first_name"]}
+    last_name={state["last_name"]}
+    phone={state["phone_number"]}
+
+    Address:
+    address1={state["address_line1"]}
+    address2={state["address_line2"]}
+    city={state["city"]}
+    state={state["user_state"]}
+    zip={state["zip_code"]}
+    country={state["country"]}
+    date={state["date"]}
+
+    Eligibility:
+    work_authorized={state["work_authorized"]}
+    requires_sponsorship={state["requires_sponsorship"]}
+
+    Self-ID:
+    veteran={state["veteran"]}
+    disability={state["disability"]}
+
+    Professional:
+    linkedin={state["linkedin_url"]}
+    github={state["github_url"]}
+    portfolio={state["portfolio_url"]}
+
+    Work Experience:
+    {state["work_experience"]}
+
+    Education:
+    {state["education"]}
+
+    Resume:
+    {state["resume_text"]}
+
+    Cover Letter:
+    {state["cover_letter_text"]}
+
+    If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+    """
+        elif arrow_temp_status and not arrow_permanent_status:
+            print("going down arrow temp status and not arrow permanent status")
+            print(f"previous action: {previous_action}")
+            prompt = f"""
+    You're an AI Applicant Helper in the Dropdown Process.
+
+    You will only be looking at the current question.
+    You will have to determine what type of action we will use and then answer the extra details that come with that action.
+
+    You will Follow the Dropdown Process to answer the current question.
+
+    Current Question: {current_answer}
+
+    Previous Action: {previous_action}
+
+    Body Text: {body_text}
+
+    Page Elements Format:
+    [icon, type, coordinates, content]
+
+    Page Elements: {page_elements}
+
+    Dropdown Process:
+    1. First find the current question in the photo.
+    2. If the current question's answer is answered correctly based on the USERS PROFILE follow this subprocess.
+    - If there are other questions on the screen or there is no exit icon stop and return something like this.
+    - Ex: {{action: “white_pixel”, icon: -1, complete: True}}
+    - If there is some type of exit icon that is needed to click to leave the current question then return something like this.
+    - Ex: {{action: “click”, icon: 8, complete: True}}
+
+    2. If the previous action was arrow follow this subprocess.
+    - If there are no options on the screen or we chose the first option in {first_text}. Find the icon to click that reopens the current question and return something like this.
+    - Choose this option if we clicked {first_text} or there are no options on the screen.
+    - Ex: {{action: "click", icon: 28, arrow_status: False, reason: : Looking at the current question, we chose the first text and the icon is closed that needs to reopened}}
+    - If there are options still shown on the screen and you see the first option: {first_text} in the image that means we need to use the scroll process.
+    - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, return something like this.
+    - Ex: {{action: scroll, current_option: 2, desired_option: 8, total_options: 20, current_text: option 2, desired_text: option 8, reason: The question is not answered and there is no options for the current question on the screen.}}
+    - Your reasoning for choosing scroll should only be if the first text is shown or there is no options listed with no answer. That means if there is an answer to the question do not choose scroll.
+
+    3. You need to look at the current question, image, body text, and page elements, and the USER PROFILE to correctly answer the question.
+    - If the desired option is on the screen then click it and return something like this.
+    - Ex: {{action: click, icon: 12}}
+    - If you cannot find the icon for desired option then find the current option which is usually highlighted in the image, if not just go with the first option shown, find the desired option, first_text (first option text), and the desired text to answer the question.
+    - {{action: arrow, current_option: 0, desired_option: 4}}
+    - If there is text that needs to be inputted to answer the current question (just because there is a text input spot doesn't automatically mean that text needs to be inputted, think logically to determine if text needs to be inputted to answer the question), find the icon that needs to be clicked and look at the User Profile to answer the Current Question.
+    - If this is just a basic fill in text box then return something like this.
+    - Ex: {{action: fill, icon: 6, action_text: no}}
+    - If this is a text box where we need to search for the answer then return something like this.
+    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2]}}
+    - Ex: {{action: search, icon: 12, list_text: [skill 4]}}
+
+    3. If there is no options present follow this route
+    - If there is no options/input text that is for the current question that means we need to click the icon of the current question to reopen the question.
+    - Find the icon by looking at the page elements and the image to reopen the question.
+    - Ex: {{action: click, icon: 28}}
+
+    USER PROFILE
+    Account:
+    email={state["email"]}
+    password={state["password"]}
+
+    Personal:
+    first_name={state["first_name"]}
+    last_name={state["last_name"]}
+    phone={state["phone_number"]}
+
+    Address:
+    address1={state["address_line1"]}
+    address2={state["address_line2"]}
+    city={state["city"]}
+    state={state["user_state"]}
+    zip={state["zip_code"]}
+    country={state["country"]}
+    date={state["date"]}
+
+    Eligibility:
+    work_authorized={state["work_authorized"]}
+    requires_sponsorship={state["requires_sponsorship"]}
+
+    Self-ID:
+    veteran={state["veteran"]}
+    disability={state["disability"]}
+
+    Professional:
+    linkedin={state["linkedin_url"]}
+    github={state["github_url"]}
+    portfolio={state["portfolio_url"]}
+
+    Work Experience:
+    {state["work_experience"]}
+
+    Education:
+    {state["education"]}
+
+    Resume:
+    {state["resume_text"]}
+
+    Cover Letter:
+    {state["cover_letter_text"]}
+
+    If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+    """
+        else:
+            prompt = f"""
+    You're an AI Applicant Helper in the Dropdown Process.
+
+    You will only be looking at the current question.
+    You will have to determine what type of action we will use and then answer the extra details that come with that action.
+
+    You will Follow the Dropdown Process to answer the current question.
+
+    Current Question: {current_answer}
+
+    Body Text: {body_text}
+
+    Page Elements Format:
+    [icon, type, coordinates, content]
+
+    Page Elements: {page_elements}
+
+    Dropdown Process:
+    1. First find the current question in the photo.
+    2. If the current question's answer is answered correctly based on the USERS PROFILE.
+    - If there are other questions on the screen or there is no exit icon stop and return something like this.
+    - Ex: {{action: “white_pixel”, icon: -1, complete: True}}
+    - If there is some type of exit icon that is needed to click to leave the current question then return something like this.
+    - Ex: {{action: “click”, icon: 8, complete: True}}
+
+    2. You need to look at the current question, image, body text, and page elements, and the USER PROFILE to correctly answer the question.
+    - If the desired option is on the screen then click it and return something like this.
+    - Ex: {{action: click, icon: 12}}
+    - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, return something like this.
+    - Ex: {{action: scroll, current_option: 2, desired_option: 8, total_options: 20, current_text: option 2, desired_text: option 8}}
+    - If there is text that needs to be inputted to answer the current question (just because there is a text input spot doesn't automatically mean that text needs to be inputted, think logically to determine if text needs to be inputted to answer the question), find the icon that needs to be clicked and look at the User Profile to answer the Current Question.
+    - If this is just a basic fill in text box then return something like this.
+    - Ex: {{action: fill, icon: 6, action_text: no}}
+    - If this is a text box where we need to search for the answer then return something like this.
+    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2]}}
+    - Ex: {{action: search, icon: 12, list_text: [skill 4]}}
+
+    3. If there is no options present follow this route
+    - If there is text that needs to be inputted for the current question, find the icon that needs to be clicked and look at the User Profile to answer the Current Question and return something like this.
+    - Ex: {{action: fill, icon: 6, action_text: yes}}
+    USER PROFILE
+    Account:
+    email={state["email"]}
+    password={state["password"]}
+
+    Personal:
+    first_name={state["first_name"]}
+    last_name={state["last_name"]}
+    phone={state["phone_number"]}
+
+    Address:
+    address1={state["address_line1"]}
+    address2={state["address_line2"]}
+    city={state["city"]}
+    state={state["user_state"]}
+    zip={state["zip_code"]}
+    country={state["country"]}
+    date={state["date"]}
+
+    Eligibility:
+    work_authorized={state["work_authorized"]}
+    requires_sponsorship={state["requires_sponsorship"]}
+
+    Self-ID:
+    veteran={state["veteran"]}
+    disability={state["disability"]}
+
+    Professional:
+    linkedin={state["linkedin_url"]}
+    github={state["github_url"]}
+    portfolio={state["portfolio_url"]}
+
+    Work Experience:
+    {state["work_experience"]}
+
+    Education:
+    {state["education"]}
+
+    Resume:
+    {state["resume_text"]}
+
+    Cover Letter:
+    {state["cover_letter_text"]}
+
+    If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+    """
+        
+        if not image1:
+            response = dropdown_process_llm2.invoke([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{pyautogui_encoded_bytes}"}}
+                    ]
+                }
+            ])
+
+        else:
+            response = dropdown_process_llm2.invoke([
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+                    ]
+                }
+            ])
+        
+        details = response["raw"]
+        new_tokens, model_name = details_process(details=details)
+        state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+        answer = response["parsed"]
+        print(f"dropdown answer: {answer}")
+        action = answer.get("action")
+        icon = answer.get("icon")
+        complete = answer.get("complete")
+        arrow_status = answer.get("arrow_status")
+        current_option = answer.get("current_option")
+        desired_option = answer.get("desired_option")
+        total_options = answer.get("total_options")
+        current_text = answer.get("current_text")
+        desired_text = answer.get("desired_text")
+
+        action_text = answer.get("action_text")
+        list_text = answer.get("list_text")
+        if arrow_status == True:
+            arrow_permanent_status = True
+            arrow_temp_status = False
+        elif arrow_status == False:
+            arrow_permanent_status = False
+            arrow_temp_status = False
+
+        if complete:
+            if action == "click":
+                current_answer = [action, icon]
+                current_box = boxes_details[icon]
+                state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+            else:
+                state = execute_action(current_answer=["white_pixel", -1], current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+            return state
+        elif action == "click":
+            new_answer = [action, icon]
+            current_box = boxes_details[icon]
+            state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_width, page_count=page_count, state=state)
+        elif action == "arrow":
+            new_answer = [action, current_option, desired_option]
+            state = execute_action(current_answer=new_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+        elif action == "fill":
+            new_answer = [action, icon, action_text]
+            current_box = boxes_details[icon]
+            state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+        elif action == "scroll":
+            state = scroll_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_x=page_x, old_y=page_y, old_page_width=full_page_width, old_page_height=old_page_height, cut_off_height=cut_off_height, desired_option=desired_option, total_options=total_options, first_text=current_text, desired_text=desired_text, state=state)
     return state
 
 def review_markdown_process(current_question: str, ai_answers: list[list], state: ApplicationState):
@@ -4094,13 +6667,13 @@ def markdown_action(current_answer: list, boxes_details: list[dict], full_page_w
     state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
     return state
 
-def search_process(all_text: list[str], current_question: str, ai_answers: list[list], state: ApplicationState, process=None):
+def search_process(list_text: list[str], current_question: str, ai_answers: list[list], state: ApplicationState, process=None):
     page = state["current_page"]["page"]
     context = state.get("context")
     page_count = len(context.pages)
     complete = False
-    current_text = all_text[0]
-    print(f"answers: {all_text}")
+    current_text = list_text[0]
+    print(f"answers: {list_text}")
     for attempt in range(4):
         pyautogui.hotkey("enter")
         time.sleep(4)
@@ -4564,7 +7137,7 @@ Job source: prefer Other, Job Board, Website, or closest equivalent.
         time.sleep(4)
     return state, complete, next_text, action
 
-def exit_question_process(current_quesstion: str, ai_answers: list[list], state: ApplicationState, all_text=None, process=None):
+def exit_question_process(current_answer: str, ai_answers: list[list], state: ApplicationState, all_text=None, process=None):
     page = state["current_page"]["page"]
     encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
     encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
@@ -4579,13 +7152,13 @@ def exit_question_process(current_quesstion: str, ai_answers: list[list], state:
         coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
         content = current_box["content"]
         page_elements.append([icon, box_type, coordinates, content])
-    print(f"current question: {current_question}")
+    print(f"current question: {current_answer}")
     print(f"all text: {all_text}")
     print(f"page elements: {page_elements}")
     prompt = f"""
 You are an AI Applicant Helper handling ONLY the current question.
 
-Current Question: {current_question}
+Current Question: {current_answer}
 All Text: {all_text}
 
 PAGE ELEMENTS
@@ -4977,191 +7550,6 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
 
     return state
 
-def review_click_and_view_process(
-    current_answer: list,
-    old_bytes: str,
-    state: ApplicationState
-):
-    time.sleep(2)
-
-    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
-    encoded_bytes, boxes_details, encoded_cropped_bytes = cropped_image_process(encoded_image1=old_bytes, encoded_image2=encoded_bytes)
-
-
-    prompt = f"""
-You're an AI Applicant Helper.
-
-Your specific task is Click and View Reviewer.
-
-CLICK AND VIEW DEFINITION:
-
-click_and_view is used when clicking an element reveals additional
-information, questions, fields, or a new section that needs to be
-completed.
-
-The original click_and_view question was:
-
-{current_answer}
-
-You must choose one of THREE statuses:
-
-1. complete
-
-The click_and_view process is fully completed.
-
-All required questions that appeared because of the click_and_view
-action have been answered correctly.
-
-The section may also have been successfully saved and closed.
-
-
-2. more_questions
-
-The click_and_view section is NOT finished.
-
-There are still unanswered required questions, newly revealed
-questions, dropdowns, checkboxes, inputs, or buttons that need to
-be handled.
-
-This includes new questions that appeared because of a previous
-answer inside the click_and_view section.
-
-
-3. incorrect
-
-Something inside the current click_and_view section is incorrect.
-
-Examples:
-
-- an error message appeared
-- an incorrect value was entered
-- a required question was answered incorrectly
-- the section cannot be completed because one of its existing
-  answers must be corrected
-
-
-IMPORTANT:
-
-ONLY review the section created or controlled by:
-
-{current_answer}
-
-Do NOT use unrelated questions elsewhere on the application when
-determining the status.
-
-For example:
-
-If the original action was:
-
-"Add More Work Experience"
-
-and Company, Position, Start Date, and End Date appeared,
-
-only judge those fields and the controls belonging to that work
-experience section.
-
-If an unrelated required question such as "Are you a veteran?"
-exists elsewhere on the page, IGNORE IT.
-
-
-CURRENT ANSWER:
-
-{current_answer}
-
-
-USER PROFILE:
-
-First name: {state["first_name"]}
-Last name: {state["last_name"]}
-Email: {state["email"]}
-Phone: {state["phone_number"]}
-
-Address:
-{state["address_line1"]}
-{state["address_line2"]}
-{state["city"]}
-{state["user_state"]}
-{state["zip_code"]}
-{state["country"]}
-
-Work authorized:
-{state["work_authorized"]}
-
-Work Experience: {state["work_experience"]}
-Education: {state["education"]}
-
-Requires sponsorship:
-{state["requires_sponsorship"]}
-
-Veteran:
-{state["veteran"]}
-
-Disability:
-{state["disability"]}
-
-LinkedIn:
-{state["linkedin_url"]}
-
-GitHub:
-{state["github_url"]}
-
-Portfolio:
-{state["portfolio_url"]}
-
-Resume:
-{state["resume_text"]}
-
-Cover Letter:
-{state["cover_letter_text"]}
-
-
-EXAMPLE 1:
-
-{{
-    click_and_view_status: complete,
-}}
-
-
-EXAMPLE 2:
-
-{{
-    click_and_view_status: more_questions,
-}}
-
-
-EXAMPLE 3:
-
-{{
-    click_and_view_status: incorrect,
-}}
-"""
-
-    response = review_click_and_view_process_llm3.invoke([
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
-            ]
-        }
-    ])
-
-    details = response["raw"]
-    new_tokens, model_name = details_process(details=details)
-    print(f"new tokens: {new_tokens}")
-    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
-    total_cost = state["token_usage"]["total_cost"]
-    if total_cost > 0.10:
-        state["action"] = "exit"
-        state["leaving_reason"] = f"The cost extended above $0.10 at the review click and view page process with the total being ${total_cost}"
-
-    decision = response["parsed"]
-
-    print(f"Click and view review: {decision}")
-
-    click_and_view_status = decision["click_and_view_status"]
-
-    return click_and_view_status, state
 
 def signup_process(state: ApplicationState):
     state = answser_question_process(state=state)
@@ -5188,8 +7576,8 @@ def load_test_user(state: ApplicationState):
 
     state["address_line1"] = "90 Holstein Ln"
     state["address_line2"] = ""
-    state["city"] = "Charlotte"
-    state["user_state"] = "North Carolina"
+    state["city"] = "Cheyenne"
+    state["user_state"] = "Wyoming"
     state["country"] = "United States"
 
     state["work_authorized"] = True
@@ -5307,22 +7695,138 @@ def complete_application(url2: str):
         user_id = "76f6e1cd-85de-46f7-b4c7-074284b3a1cc"
         time.sleep(5)
         pyautogui.moveTo(0, 0)
-        final_state = mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage, "browser": browser, "context": context, "user_id": user_id})
+        final_state = mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage, "browser": browser, "context": context, "user_id": user_id, "wait_tracker": 0})
         print(f"final_state: {final_state}")
         leaving_reason = final_state.get("leaving_reason")
         print(f"Browser closing due to : {leaving_reason}")
         browser.close()
 
-# complete_application(url)
 
-image = Image.open("/Users/peytonrivers/Desktop/test6.png")
+complete_application(url)
+from rapidocr import RapidOCR
+
+# Initialize the engine (defaults to ONNX Runtime)
+engine = RapidOCR()
+import numpy as np
+from PIL import Image
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+import numpy as np
+from PIL import Image, ImageDraw
+
+def test_rapidocr(image_path):
+    image = Image.open(image_path).convert("RGB")
+    image_array = np.asarray(image)
+    image_width, image_height = image.size
+
+    result = engine(image_array)
+
+    if result.boxes is None or result.txts is None:
+        print("No text detected.")
+        image.show()
+        return []
+
+    detected_boxes = []
+    draw = ImageDraw.Draw(image)
+
+    for bbox, text, confidence in zip(result.boxes, result.txts, result.scores):
+        x1 = int(np.min(bbox[:, 0]))
+        y1 = int(np.min(bbox[:, 1]))
+        x2 = int(np.max(bbox[:, 0]))
+        y2 = int(np.max(bbox[:, 1]))
+
+        draw.rectangle((x1, y1, x2, y2), outline="green", width=2)
+
+        normalized_bbox = [
+            x1 / image_width,
+            y1 / image_height,
+            x2 / image_width,
+            y2 / image_height
+        ]
+
+        detected_boxes.append({
+            "type": "text",
+            "bbox": normalized_bbox,
+            "content": text
+        })
+
+    image.show()
+
+    return detected_boxes
+
+results = test_rapidocr("/Users/peytonrivers/Desktop/small5.png")
+print(f"results: {results}")
+
+"""image = Image.open("/Users/peytonrivers/Desktop/Screenshot 2026-10-20 at 12.26.18 PM.png.png")
 buffer = io.BytesIO()
 
 image.save(buffer, format="PNG")
 decoded_bytes = buffer.getvalue()
-encoded_bytes = base64.b64encode(decoded_bytes).decode("utf-8")
-data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+encoded_bytes1 = base64.b64encode(decoded_bytes).decode("utf-8")
+data = {"image_input": encoded_bytes1, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
 response = requests.post("http://127.0.0.1:8000/image_process", json=data)
 response = response.json()
-boxes_details = response["boxes_details"]
-print(boxes_details)
+boxes_details1 = response["boxes_details"]
+
+image = Image.open("/Users/peytonrivers/Desktop/test23.png")
+image.show()
+buffer = io.BytesIO()
+image.save(buffer, format="PNG")
+decoded_bytes = buffer.getvalue()
+encoded_bytes2 = base64.b64encode(decoded_bytes).decode("utf-8")
+data = {"image_input": encoded_bytes2, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
+response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+response = response.json()
+boxes_details2 = response["boxes_details"]
+
+encoded_bytes = pixel_image_cropping(encoded_bytes1=encoded_bytes1, encoded_bytes2=encoded_bytes2)
+encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
+print(f"boxes details: {boxes_details}")
+decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+buffer = io.BytesIO(decoded_bytes)
+image = Image.open(buffer)
+image.show()
+
+image = Image.open("/Users/peytonrivers/Desktop/test24.png")
+buffer = io.BytesIO()
+
+image.save(buffer, format="PNG")
+decoded_bytes = buffer.getvalue()
+encoded_bytes1 = base64.b64encode(decoded_bytes).decode("utf-8")
+encoded_bytes, boxes_details = expand_image(encoded_bytes1)
+decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+buffer = io.BytesIO(decoded_bytes)
+image = Image.open(buffer)
+image.show()
+print(f"boxes details: {boxes_details}")
+print("--------------------------------------------------------------")
+
+image = Image.open("/Users/peytonrivers/Desktop/test25.png")
+buffer = io.BytesIO()
+
+image.save(buffer, format="PNG")
+decoded_bytes = buffer.getvalue()
+encoded_bytes1 = base64.b64encode(decoded_bytes).decode("utf-8")
+encoded_bytes, boxes_details = expand_image(encoded_bytes1)
+decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+buffer = io.BytesIO(decoded_bytes)
+image = Image.open(buffer)
+image.show()
+print(f"boxes details: {boxes_details}")
+print("--------------------------------------------------------------")
+
+image = Image.open("/Users/peytonrivers/Desktop/test26.png")
+buffer = io.BytesIO()
+
+image.save(buffer, format="PNG")
+decoded_bytes = buffer.getvalue()
+encoded_bytes1 = base64.b64encode(decoded_bytes).decode("utf-8")
+encoded_bytes, boxes_details = expand_image(encoded_bytes1)
+decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+buffer = io.BytesIO(decoded_bytes)
+image = Image.open(buffer)
+image.show()
+print(f"boxes details: {boxes_details}")
+print("--------------------------------------------------------------")"""
