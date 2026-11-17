@@ -304,18 +304,18 @@ def coordinates_process(coordinates: list, full_page_width, full_page_height):
     page_y = (middle_y * full_page_height)
     return page_x, page_y
 
-def cropped_coordinates_process(min_cut_off_height: int, old_page_height: int, new_page_height: int, desired_bbox: list[float]):
+def cropped_coordinates_process(full_page_height1: int, full_page_height2: int, min_cut_off_height: int, desired_bbox: list[float]):
     x1, y1, x2, y2 = desired_bbox
 
-    y1_pixel = (y1 * new_page_height) + min_cut_off_height
-    y2_pixel = (y2 * new_page_height) + min_cut_off_height
+    y1_pixel = (y1 * full_page_height2) + min_cut_off_height
+    y2_pixel = (y2 * full_page_height2) + min_cut_off_height
 
-    new_bbox = [x1, y1_pixel / old_page_height, x2, y2_pixel / old_page_height]
+    new_bbox = [x1, y1_pixel / full_page_height1, x2, y2_pixel / full_page_height1]
 
     print(f"Original cropped bbox: {desired_bbox}")
     print(f"Converted bbox: {new_bbox}")
-    print(f"Old height: {old_page_height}")
-    print(f"New height: {new_page_height}")
+    print(f"Old height: {full_page_height1}")
+    print(f"New height: {full_page_height2}")
     print(f"Top crop offset: {min_cut_off_height}")
 
     return new_bbox
@@ -877,7 +877,7 @@ delete_and_fill: Delete text and fill it in with new text.
 click: Select/unselect an immediately answerable option. Requires icon.
 upload_resume: Resume upload field. Requires icon.
 upload_cover_letter: Cover-letter upload field. Requires icon.
-extra_steps: we use this for time questions, dropdown questions, or when we need to search to answer the question. Requires icon + question.
+extra_steps: we use this for time questions, dropdown questions, or when we need to search to answer the question. Requires icon + Current Question.
 click_and_view: Click only when it reveals additional fields/questions that must be completed. Requires icon + question.
 submit: Finalize or advance the completed page/section. Requires icon.
 
@@ -1850,7 +1850,6 @@ def expand_image(encoded_bytes: str):
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    image.show()
 
     width, height = image.size
     left_padding = 0
@@ -1923,13 +1922,13 @@ def expand_image(encoded_bytes: str):
 
 
 def check_search_options(
-    original_encoded_bytes: str,
-    original_boxes_details: list[dict],
+    old_encoded_bytes: str,
+    old_boxes_details: list[dict],
     old_page_height: int,
     cut_off_height: int,
     cropped_encoded_bytes: str,
     cropped_boxes_details1: list[dict],
-    text_options: list[str],
+    list_text: list[str],
     state: ApplicationState
 ):
     page = state["current_page"]["page"]
@@ -1963,10 +1962,10 @@ def check_search_options(
 
     original_text = combine_text(
         boxes_details=cropped_boxes_details1,
-        search_text=text_options[0]
+        search_text=list_text[0]
     )
 
-    for i in range(len(text_options)):
+    for i in range(len(list_text)):
 
         encoded_bytes, full_page_width, full_page_height = screenshot_process(
             state=state
@@ -1974,7 +1973,7 @@ def check_search_options(
 
         if full_page_height == old_page_height:
             cropped_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(
-                encoded_bytes1=original_encoded_bytes,
+                encoded_bytes1=old_encoded_bytes,
                 encoded_bytes2=encoded_bytes
             )
 
@@ -1984,8 +1983,8 @@ def check_search_options(
             )
 
             cropped_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(
-                encoded_bytes1=original_encoded_bytes,
-                boxes_details1=original_boxes_details,
+                encoded_bytes1=old_encoded_bytes,
+                boxes_details1=old_boxes_details,
                 encoded_bytes2=encoded_bytes,
                 boxes_details2=current_boxes_details,
                 cut_off_height=cut_off_height,
@@ -1994,13 +1993,13 @@ def check_search_options(
                 state=state
             )
 
-        expanded_bytes, boxes_details = expand_image(
-            encoded_bytes=cropped_bytes
+        expanded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(
+            encoded_bytes=cropped_bytes, state=state
         )
 
         current_text = combine_text(
             boxes_details=boxes_details,
-            search_text=text_options[i]
+            search_text=list_text[i]
         )
 
         if not compare_text(
@@ -2009,11 +2008,11 @@ def check_search_options(
         ):
             return False, state
 
-        if i < len(text_options) - 1:
+        if i < len(list_text) - 1:
             for l in range(500):
                 page.keyboard.press("Delete")
 
-            page.keyboard.type(text_options[i + 1])
+            page.keyboard.type(list_text[i + 1])
 
     return True, state
 
@@ -4123,8 +4122,11 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             new_answer = ["click", icon]
             current_box = boxes_details[icon]
             current_bbox = current_box["bbox"]
-            new_page_height = max_cut_off_height - min_cut_off_height
-            desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, old_page_height=full_page_height, new_page_height=new_page_height, desired_bbox=current_bbox)
+            if min_cut_off_height is None or max_cut_off_height is None:
+                new_page_height = full_page_height
+            else:
+                new_page_height = max_cut_off_height - min_cut_off_height
+            desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, full_page_height1=full_page_height, full_page_height2=new_page_height, desired_bbox=current_bbox)
             current_box["bbox"] = desired_box
             middle_x, middle_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
             print("---------------------------------------------------------------------------------------------")
@@ -4163,7 +4165,10 @@ def extra_steps_action(current_answer: list, full_page_width: int, full_page_hei
         print("time action in extra steps")
 
 def normalize_text(content: str):
-    return "".join(char.lower() for char in content if char.isalpha())
+    if isinstance(content, str):
+        return "".join(char.lower() for char in content if char.isalnum())
+    else:
+        ""
 
 def compare_text(text1: str, text2: str, max_difference: int = 3) -> bool:
     text1 = normalize_text(text1)
@@ -4193,18 +4198,30 @@ def compare_text(text1: str, text2: str, max_difference: int = 3) -> bool:
 
     return previous[-1] <= max_difference
 
-def setup_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, first_text: str, cut_off_height: int, state: ApplicationState):
+def setup_scroll_process(current_answer: list[str], old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, first_text: str, cut_off_height: int, state: ApplicationState):
     page = state["current_page"]["page"]
     first_text = normalize_text(first_text)
     current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+    """decoded_bytes = base64.b64decode(old_encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    image.show()"""
+    print("-----------------------------------------------------------------------------------------------")
     encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
     if current_height == old_page_height:
-        encoded_bytes, min_cut_height, max_cut_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
+        print("went down pixel route")
+        encoded_bytes1, min_cut_height, max_cut_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
     else:
+        print("went down cropped route")
         do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
-        encoded_bytes, min_cut_height, max_cut_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
-    encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
-
+        encoded_bytes1, min_cut_height, max_cut_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
+    encoded_bytes, boxes_details, do_not_use, do_not_use2 = omniparser_process(encoded_bytes=encoded_bytes1, state=state)
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    buffer = io.BytesIO(decoded_bytes)
+    image = Image.open(buffer)
+    image.show()
+    print("-----------------------------------------------------------------------------------------------")
+    time.sleep(10)
     page_elements = []
     for i in range(len(boxes_details)):
         current_box = boxes_details[i]
@@ -4214,21 +4231,25 @@ def setup_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict], 
         coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
         content = current_box["content"]
         page_elements.append([current_icon, box_type, coordinates, content])
-
+    print(f"page elements: {page_elements}")
+    print(f"first text in setup: {first_text}")
     prompt = f"""
-You're an AI Applicant helper and your job is to look at all the Page Elements
-and tell me which icon or icons match the first text.
+You're an AI Applicant helper and your job is to look at the image and the page elements to find the first option for the current question.
+Look at the image and find the current question.
 
-Sometimes multiple icons combined can make the first text.
+Current Question: {current_answer}
 
-There is also a world where there is no first text option that matches the desired tect and in that case.
-- Return this: {{action: no_icon, icon: None}}
-There is also a world for the current question there are no options available and we would also return this.
-- Return this: {{action: no_icon, icon: None}}
+If there are options open for the current question then do no have the action be no_icon.
 
-Here is the first text we are looking for.
+no_icon: when there are no options/dropdown options for the current question
+icon: when there are options/dropdown options for the current questions
+
+We are looking for either the first text or the first option for the current question
 
 First Text: {first_text}
+
+There is a world for the current question there are no options available and we would also return this.
+- Return this: {{action: no_icon, icon: None, reason: whatever your reason is}}
 
 Page Elements Format
 [icon, type, coordinates, content]
@@ -4236,10 +4257,10 @@ Page Elements Format
 Page Elements: {page_elements}
 
 Example Output 1:
-{{action: get_icon, "icon": [1]}}
+{{action: get_icon, "icon": [1], reason: whatever your reason is}}
 
 Example Output 2:
-{{action: get_icon, "icon": [3, 8, 10]}}
+{{action: get_icon, "icon": [3, 8, 10], reason: whatever your reason is}}
 """
     response = setup_select_process_llm2.invoke([
         {
@@ -4266,8 +4287,10 @@ Example Output 2:
     )
     first_text = ""
     answer = response["parsed"]
+    print(f"setup scroll answer: {answer}")
     action = answer.get("action")
     if action == "no_icon":
+        print("returnin none for a bunch of items")
         return None, None, None, None, None, None, None, None, action, state
     icon = answer.get("icon")
     if not icon:
@@ -4293,15 +4316,16 @@ Example Output 2:
         current_zero_coordinate = current_box["bbox"][0]
         current_width_pixel = current_zero_coordinate * full_page_width
         content = current_box["content"]
-        content = normalize_text(content)
-        if current_width_pixel >= safe_x[0] and current_width_pixel <= safe_x[1]:
-            current_third_coordinate = current_box["bbox"][3]
-            if current_third_coordinate < safe_y_axis:
-                banned_options.append(content)
+        if content is not None:
+            content = normalize_text(content)
+            if current_width_pixel >= safe_x[0] and current_width_pixel <= safe_x[1]:
+                current_third_coordinate = current_box["bbox"][3]
+                if current_third_coordinate < safe_y_axis:
+                    banned_options.append(content)
+                else:
+                    safe_elements.append(current_box)
             else:
-                safe_elements.append(current_box)
-        else:
-            banned_options.append(content)
+                banned_options.append(content)
 
     closest_elements = []
     for i in range(len(safe_elements)):
@@ -4310,6 +4334,7 @@ Example Output 2:
             closest_elements.append(current_box)
     closest_elements.sort(key=lambda current_box: current_box["bbox"][1])
     if not closest_elements:
+        print("returning none due to there not being a close element")
         return None, None, None, None, None, None, None, None, "no_icon", state
     closest_element = closest_elements[0]
     image_height = max_cut_height - min_cut_height
@@ -4329,43 +4354,55 @@ Example Output 2:
     print(f"safe_x: {safe_x}, safe_y: {safe_y}, scrolling: {scrolling}, options: {options}, banned options: {banned_options}, first text: {first_text}, first_x_coord: {first_x_coord}, first_y_coord: {first_y_coord}, action: {action}")
     return safe_x, safe_y, scrolling, options, banned_options, first_text, first_x_coord, first_y_coord, action, state
 
-def complete_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, safe_x: list[int], safe_y: list[int], scrolling: float, options: list, banned_options: list[str], first_text: str, first_x_coord: int, first_y_coord: int, desired_text: str, total_options: int, desired_option: int, state: ApplicationState):
+def complete_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, safe_x: list[int], safe_y: list[int], scrolling: float, options: list, banned_options: list[str], first_text: str, first_x_coord: int, first_y_coord: int, desired_text: str, total_options: int, desired_option: int, move_down: bool, state: ApplicationState):
     page = state["current_page"]["page"]
     comparison_bytes, full_page_width, full_page_height = screenshot_process(state=state)
     full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
 
     if old_page_height == full_page_height:
         encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=comparison_bytes)
-        encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
     else:
         do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
         encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=comparison_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, old_page_height=old_page_height, full_page_width=full_page_width, state=state)
-        encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes)
-
+    
+    encoded_bytes, boxes_details, do_not_use, do_not_use2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
     desired_text = normalize_text(desired_text)
     first_text = normalize_text(first_text)
     banned_options = [normalize_text(content) for content in banned_options]
 
     reorganized_elements = []
+    image_height = max_cut_off_height - min_cut_off_height
     for i in range(len(boxes_details)):
         current_box = boxes_details[i].copy()
+        print(f"current box content: {current_box["content"]}")
         current_x_axis = current_box["bbox"][0] * full_page_width
 
         if current_x_axis < safe_x[0] or current_x_axis > safe_x[1]:
             continue
-
+        
         content = normalize_text(current_box["content"])
 
         if not content or content in banned_options:
             continue
-        
+        print("got through both filters")
         current_box["content"] = content
+        if content == desired_text:
+            current_x = (current_box["bbox"][0] + current_box["bbox"][2]) / 2
+            current_y = (current_box["bbox"][1] + current_box["bbox"][3]) / 2
+
+            current_x *= full_page_width
+            current_y = (image_height * current_y) + min_cut_off_height
+            print("we are clicking with current text = desired text")
+            print(f"current element: {current_box}")
+            print(f"complete x: {current_x}, complete y: {current_y}")
+            page.mouse.click(current_x, current_y)
+
+            return True, options, comparison_bytes, state
         reorganized_elements.append(current_box)
 
     reorganized_elements.sort(key=lambda current_box: current_box["bbox"][1])
 
     combined_elements = []
-    image_height = max_cut_off_height - min_cut_off_height
 
     if reorganized_elements:
         combined_elements.append(reorganized_elements[0])
@@ -4442,7 +4479,8 @@ def complete_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict
 
             current_x *= full_page_width
             current_y = (image_height * current_y) + min_cut_off_height
-
+            print("we are clicking with current text = desired text")
+            print(f"current element: {current_element}")
             page.mouse.click(current_x, current_y)
 
             return True, options, comparison_bytes, state
@@ -4454,7 +4492,8 @@ def complete_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict
 
                 current_x *= full_page_width
                 current_y = (image_height * current_y) + min_cut_off_height
-
+                print("we are clicking because i == desired option")
+                print(f"current element: {current_element}")
                 page.mouse.click(current_x, current_y)
 
                 return True, options, comparison_bytes, state
@@ -4483,14 +4522,20 @@ def complete_scroll_process(old_encoded_bytes: str, old_boxes_details: list[dict
     else:
         print("used first element")
         page.mouse.move(first_x_coord, first_y_coord)
-    page.mouse.wheel(0, scrolling * 3)
+    if move_down == True:
+        page.mouse.wheel(0, scrolling * 3)
+    else:
+        page.mouse.wheel(0, -(scrolling * 3))
     print(f"combined elements: {combined_elements}")
     return False, options, comparison_bytes, state    
 
 
-def scroll_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_x: int, old_y: int, old_page_width: int, old_page_height: int, cut_off_height: int, first_text: str, desired_text: str, total_options: int, desired_option: int, state: ApplicationState):
+def scroll_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_x: int, old_y: int, old_page_width: int, old_page_height: int, cut_off_height: int, first_text: str, desired_text: str, total_options: int, desired_option: int, move_down: bool, state: ApplicationState):
     page = state["current_page"]["page"]
-    safe_x, safe_y, scrolling, options, banned_options, new_first_text, first_x_coord, first_y_coord, action, state = setup_scroll_process(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, first_text=first_text, state=state)
+    print("pre setup")
+    print(f"scrol first text: {first_text}")
+    safe_x, safe_y, scrolling, options, banned_options, new_first_text, first_x_coord, first_y_coord, action, state = setup_scroll_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, first_text=first_text, state=state)
+    print("got through set up")
     if action == "no_icon" or not action or safe_x is None:
         current_height = page.evaluate("""() => { return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight)}""")
         if current_height == old_page_height:
@@ -4498,14 +4543,15 @@ def scroll_process(current_answer: dict, old_encoded_bytes: str, old_boxes_detai
         else:
             page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
             page.mouse.click(page_x, page_y)
-        safe_x, safe_y, scrolling, options, banned_options, new_first_text, first_x_coord, first_y_coord, action, state = setup_scroll_process(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, first_text=first_text, state=state)
+        safe_x, safe_y, scrolling, options, banned_options, new_first_text, first_x_coord, first_y_coord, action, state = setup_scroll_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, first_text=first_text, state=state)
         if action == "no_icon" or not action:
             return state
 
     same_bytes_tracker = 0
     old_bytes = []
     for i in range(total_options * 3):
-        complete, options, new_encoded_bytes, state = complete_scroll_process(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, safe_x=safe_x, safe_y=safe_y, scrolling=scrolling, options=options, banned_options=banned_options, first_text=new_first_text, first_x_coord=first_x_coord, first_y_coord=first_y_coord, desired_text=desired_text, total_options=total_options, desired_option=desired_option, state=state)
+        print(f"we are iteration: {i} of the complete scroll process")
+        complete, options, new_encoded_bytes, state = complete_scroll_process(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, safe_x=safe_x, safe_y=safe_y, scrolling=scrolling, options=options, banned_options=banned_options, first_text=new_first_text, first_x_coord=first_x_coord, first_y_coord=first_y_coord, desired_text=desired_text, total_options=total_options, desired_option=desired_option, move_down=move_down, state=state)
         if complete:
             break
         if i == 0:
@@ -5940,19 +5986,26 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     arrow_temp_status = True
     arrow_permanent_status = False
     needs_scroll = False
-    for i in range(5):
+    previous_answers = []
+    for i in range(6):
         body_text = page.locator("body").inner_text() or None
-        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+        encoded_bytes, full_page_width1, full_page_height1 = screenshot_process(state=state)
         do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
         if full_page_height == old_page_height:
             encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
         else:
             encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
+        
+        if min_cut_off_height is None or max_cut_off_height is None:
+            print("min cut off height is None")
+            min_cut_off_height = 0
+            max_cut_off_height = 0
+
         encoded_bytes, boxes_details, do_not_use, do_not_use2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
         decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
         buffer1 = io.BytesIO(decoded_bytes)
         image1 = Image.open(buffer1)
-        image1.show()
+        full_page_width2, full_page_height2 = image1.size
         if not image1:
             pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
             buffer = io.BytesIO()
@@ -5974,18 +6027,21 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
             coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
             content = current_box["content"]
             page_elements.append([icon, box_type, coordinates, content])
+        print(f"desired answer: {desired_text}")
         if arrow_permanent_status:
+            print("going down where arrow does work")
             prompt = f"""
     You're an AI Applicant Helper in the Dropdown Process.
 
     You will only be looking at the current question.
     You will have to determine what type of action we will use and then answer the extra details that come with that action.
+    You will also have your previous answers to the dropdown question to help you understand the context.
 
     You will Follow the Dropdown Process to answer the current question.
 
     Current Question: {current_answer}
 
-    Desired Answer: {desired_text}
+    previous answers: {previous_answers}
 
     Body Text: {body_text}
 
@@ -5996,7 +6052,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
 
     Dropdown Process:
     1. First find the current question in the photo.
-    2. If the current question's answer is the desired answer, stop and follow this subprocess.
+    2. If the current question's answer is the desired answer based on the User Profile, stop and follow this subprocess.
 
     - If there are other questions on the screen or there is no exit icon stop and return something like this.
     - Ex: {{action: “white_pixel”, icon: -1, complete: True}}
@@ -6005,18 +6061,18 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
 
     2. If there are options on the screen follow this subprocess.
     - If the desired option is on the screen then click it. Return something like this.
-    - Ex: {{action: click, icon: 12}}
+    - Ex: {{action: click, icon: 12, reason: whatever your reason is (your reason helps future answers)}}
     - If the desired option is not seen then follow this return process. 
     - Find the current option in the photo and the desired option, the total amount of options, first option text that appears in the photo, desired text. Return something like this.
-    - Ex: {{action: arrow, current_option: 8, desired_option: 4, total_options: 80}}
+    - Ex: {{action: arrow, current_option: 8, desired_option: 4, total_options: 80, reason: whatever your reason is (your reason helps future answers)}}
     - If there is text that needs to be inputted for the current question, find the icon that needs to be clicked and look at the User Profile to answer the Current Question.
     - return something like this (just because there is a place to input text for the current question doesn't mean we need to input text, think logically to determine if we do or don't need to).
     - You also need to determine if this requires a basic fill in or is this something we need to search for.
     - If this is just a basic fill in text box then return something like this.
-    - Ex: {{action: fill, icon: 6, action_text: no}}
+    - Ex: {{action: fill, icon: 6, action_text: no, reason: whatever your reason is (your reason helps future answers)}}
     - If this is a text box where we need to search for the answer then return something like this.
-    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2]}}
-    - Ex: {{action: search, icon: 12, list_text: [skill 4]}}
+    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2], reason: whatever your reason is (your reason helps future answers)}}
+    - Ex: {{action: search, icon: 12, list_text: [skill 4], reason: whatever your reason is (your reason helps future answers)}}
 
     3. If there is no options present follow this route
     - Find the icon that is going to reopen the current question that will allow us to continue the drop down process.
@@ -6075,12 +6131,15 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
 
     You will only be looking at the current question.
     You will have to determine what type of action we will use and then answer the extra details that come with that action.
+    You will also have your previous answers to the dropdown question to help you understand the context.
 
     You will Follow the Dropdown Process to answer the current question.
 
     Current Question: {current_answer}
 
     Previous Action: {previous_action}
+
+    previous answers: {previous_answers}
 
     Body Text: {body_text}
 
@@ -6091,32 +6150,32 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
 
     Dropdown Process:
     1. First find the current question in the photo.
-    2. If the current question's answer is answered correctly based on the USERS PROFILE follow this subprocess.
-    - If there are other questions on the screen or there is no exit icon stop and return something like this.
-    - Ex: {{action: “white_pixel”, icon: -1, complete: True}}
+    2. If the current question's answer is the desired answer based on the User Profile, stop and follow this subprocess.    - If there are other questions on the screen or there is no exit icon stop and return something like this.
+    - Ex: {{action: “white_pixel”, icon: -1, complete: True, reason: whatever your reason}}
     - If there is some type of exit icon that is needed to click to leave the current question then return something like this.
-    - Ex: {{action: “click”, icon: 8, complete: True}}
+    - Ex: {{action: “click”, icon: 8, complete: True, reason: whatever your reason}}
 
     2. If the previous action was arrow follow this subprocess.
     - If there are no options on the screen or we chose the first option in {first_text}. Find the icon to click that reopens the current question and return something like this.
     - Choose this option if we clicked {first_text} or there are no options on the screen.
-    - Ex: {{action: "click", icon: 28, arrow_status: False, reason: : Looking at the current question, we chose the first text and the icon is closed that needs to reopened}}
     - If there are options still shown on the screen and you see the first option: {first_text} in the image that means we need to use the scroll process.
-    - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, return something like this.
-    - Ex: {{action: scroll, current_option: 2, desired_option: 8, total_options: 20, current_text: option 2, desired_text: option 8, reason: The question is not answered and there is no options for the current question on the screen.}}
+    - Ex: {{action: "click", icon: 28, arrow_status: False, reason: : Looking at the current question, we chose the first text and the icon is closed that needs to reopened.(your reason helps future answers)}}
+    - If there are options still shown on the screen and you see the first option: {first_text} in the image that means we need to use the scroll process.
+    - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, if move down is True that means we are moving downwards to find our option, if move down is False we are moving up to Find our option, return something like this.
+    - Ex: {{action: scroll, current_option: 2, desired_option: 8, total_options: 20, current_text: option 2, desired_text: option 8, arrow_status: False, move_down: True, reason: The question is not answered and there is no options for the current question on the screen and the correct option is downwards. (your reason helps future answers)}}
     - Your reasoning for choosing scroll should only be if the first text is shown or there is no options listed with no answer. That means if there is an answer to the question do not choose scroll.
 
     3. You need to look at the current question, image, body text, and page elements, and the USER PROFILE to correctly answer the question.
     - If the desired option is on the screen then click it and return something like this.
-    - Ex: {{action: click, icon: 12}}
+    - Ex: {{action: click, icon: 12, reason: whatever your reason is (your reason helps future answers)}}
     - If you cannot find the icon for desired option then find the current option which is usually highlighted in the image, if not just go with the first option shown, find the desired option, first_text (first option text), and the desired text to answer the question.
-    - {{action: arrow, current_option: 0, desired_option: 4}}
+    - {{action: arrow, current_option: 0, desired_option: 4, reason: whatever your reason is (your reason helps future answers)}}
     - If there is text that needs to be inputted to answer the current question (just because there is a text input spot doesn't automatically mean that text needs to be inputted, think logically to determine if text needs to be inputted to answer the question), find the icon that needs to be clicked and look at the User Profile to answer the Current Question.
     - If this is just a basic fill in text box then return something like this.
-    - Ex: {{action: fill, icon: 6, action_text: no}}
+    - Ex: {{action: fill, icon: 6, action_text: no, reason: whatever your reason is (your reason helps future answers)}}
     - If this is a text box where we need to search for the answer then return something like this.
-    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2]}}
-    - Ex: {{action: search, icon: 12, list_text: [skill 4]}}
+    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2], reason: whatever your reason is (your reason helps future answers)}}
+    - Ex: {{action: search, icon: 12, list_text: [skill 4], reason: whatever your reason is (your reason helps future answers)}}
 
     3. If there is no options present follow this route
     - If there is no options/input text that is for the current question that means we need to click the icon of the current question to reopen the question.
@@ -6170,16 +6229,20 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
     """
         else:
+            print("going down the process where arrow doesn't work and we must use scroll")
             prompt = f"""
     You're an AI Applicant Helper in the Dropdown Process.
 
     You will only be looking at the current question.
     You will have to determine what type of action we will use and then answer the extra details that come with that action.
+    You will also have your previous answers to the dropdown question to help you understand the context.
 
     You will Follow the Dropdown Process to answer the current question.
 
     Current Question: {current_answer}
 
+    previous answers: {previous_answers}
+    
     Body Text: {body_text}
 
     Page Elements Format:
@@ -6189,7 +6252,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
 
     Dropdown Process:
     1. First find the current question in the photo.
-    2. If the current question's answer is answered correctly based on the USERS PROFILE.
+    2. If the current question's answer is the desired answer based on the User Profile, stop and follow this subprocess.    - If there are other questions on the screen or there is no exit icon stop and return something like this.
     - If there are other questions on the screen or there is no exit icon stop and return something like this.
     - Ex: {{action: “white_pixel”, icon: -1, complete: True}}
     - If there is some type of exit icon that is needed to click to leave the current question then return something like this.
@@ -6197,19 +6260,19 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
 
     2. You need to look at the current question, image, body text, and page elements, and the USER PROFILE to correctly answer the question.
     - If the desired option is on the screen then click it and return something like this.
-    - Ex: {{action: click, icon: 12}}
-    - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, return something like this.
-    - Ex: {{action: scroll, current_option: 2, desired_option: 8, total_options: 20, current_text: option 2, desired_text: option 8}}
+    - Ex: {{action: click, icon: 12, reason: whatever your reason is (your reason helps future answers)}}
+    - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, if move down is True that means we are moving downwards to find our option, if move down is False we are moving up to Find our option, return something like this.
+    - Ex: {{action: scroll, current_option: 10, desired_option: 5, total_options: 20, current_text: option 2, desired_text: option 8, move_down: False, reason: we need to move upward to find our desired option. (your reason helps future answers).}}
     - If there is text that needs to be inputted to answer the current question (just because there is a text input spot doesn't automatically mean that text needs to be inputted, think logically to determine if text needs to be inputted to answer the question), find the icon that needs to be clicked and look at the User Profile to answer the Current Question.
     - If this is just a basic fill in text box then return something like this.
-    - Ex: {{action: fill, icon: 6, action_text: no}}
+    - Ex: {{action: fill, icon: 6, action_text: no, reason: whatever your reason is (your reason helps future answers)}}
     - If this is a text box where we need to search for the answer then return something like this.
-    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2]}}
-    - Ex: {{action: search, icon: 12, list_text: [skill 4]}}
+    - Ex: {{action: search, icon: 8, list_text: [skill 1, skill 2], reason: whatever your reason is (your reason helps future answers)}}
+    - Ex: {{action: search, icon: 12, list_text: [skill 4], reason: whatever your reason is (your reason helps future answers)}}
 
     3. If there is no options present follow this route
     - If there is text that needs to be inputted for the current question, find the icon that needs to be clicked and look at the User Profile to answer the Current Question and return something like this.
-    - Ex: {{action: fill, icon: 6, action_text: yes}}
+    - Ex: {{action: fill, icon: 6, action_text: yes, reason: whatever your reason is (your reason helps future answers)}}
     USER PROFILE
     Account:
     email={state["email"]}
@@ -6284,6 +6347,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
         new_tokens, model_name = details_process(details=details)
         state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
         answer = response["parsed"]
+        previous_answers.append(answer)
         print(f"dropdown answer: {answer}")
         action = answer.get("action")
         icon = answer.get("icon")
@@ -6297,17 +6361,23 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
 
         action_text = answer.get("action_text")
         list_text = answer.get("list_text")
-        if arrow_status == True:
-            arrow_permanent_status = True
-            arrow_temp_status = False
-        elif arrow_status == False:
-            arrow_permanent_status = False
-            arrow_temp_status = False
-
+        move_down = answer.get("move_down")
+        if arrow_temp_status == True and previous_action == "arrow":
+            print("seeing if setting arrow status permanently works")
+            print(f"arrow status: {arrow_status}")
+            if arrow_status == True:
+                arrow_permanent_status = True
+                arrow_temp_status = False
+            elif arrow_status == False or action == "scroll":
+                arrow_permanent_status = False
+                arrow_temp_status = False
+        previous_action = action
         if complete:
             if action == "click":
                 current_answer = [action, icon]
                 current_box = boxes_details[icon]
+                desired_bbox = cropped_coordinates_process(full_page_height1=full_page_height1, full_page_height2=full_page_height2, min_cut_off_height=min_cut_off_height, desired_bbox=current_box["bbox"])
+                current_box["bbox"] = desired_bbox
                 state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
             else:
                 state = execute_action(current_answer=["white_pixel", -1], current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
@@ -6315,16 +6385,21 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
         elif action == "click":
             new_answer = [action, icon]
             current_box = boxes_details[icon]
-            state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_width, page_count=page_count, state=state)
+            desired_bbox = cropped_coordinates_process(full_page_height1=full_page_height1, full_page_height2=full_page_height2, min_cut_off_height=min_cut_off_height, desired_bbox=current_box["bbox"])
+            
+            current_box["bbox"] = desired_bbox
+            state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
         elif action == "arrow":
             new_answer = [action, current_option, desired_option]
             state = execute_action(current_answer=new_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
         elif action == "fill":
             new_answer = [action, icon, action_text]
             current_box = boxes_details[icon]
+            desired_bbox = cropped_coordinates_process(full_page_height1=full_page_height1, full_page_height2=full_page_height2, min_cut_off_height=min_cut_off_height, desired_bbox=current_box["bbox"])
+            current_box["bbox"] = desired_bbox
             state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
         elif action == "scroll":
-            state = scroll_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_x=page_x, old_y=page_y, old_page_width=full_page_width, old_page_height=old_page_height, cut_off_height=cut_off_height, desired_option=desired_option, total_options=total_options, first_text=current_text, desired_text=desired_text, state=state)
+            state = scroll_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_x=page_x, old_y=page_y, old_page_width=full_page_width, old_page_height=old_page_height, cut_off_height=cut_off_height, desired_option=desired_option, total_options=total_options, first_text=current_text, desired_text=desired_text, move_down=move_down, state=state)
     return state
 
 def review_markdown_process(current_question: str, ai_answers: list[list], state: ApplicationState):
@@ -6667,7 +6742,7 @@ def markdown_action(current_answer: list, boxes_details: list[dict], full_page_w
     state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
     return state
 
-def search_process(list_text: list[str], current_question: str, ai_answers: list[list], state: ApplicationState, process=None):
+def search_process( current_answer: str, list_text: list[str], state: ApplicationState, process=None):
     page = state["current_page"]["page"]
     context = state.get("context")
     page_count = len(context.pages)
@@ -6696,7 +6771,7 @@ def search_process(list_text: list[str], current_question: str, ai_answers: list
 Your an AI applicant helper whose job is to help us out in the search process.
 We have just entered some text and your job is to tell us one of a few things. 
 Only look at the current question and ignore the rest, our job is to only answer the current question.
-current_question: {current_question}
+current_question: {current_answer}
 Body Text: {body_text}
 
 Go through the Search Question Process to answer the question.
@@ -6828,6 +6903,10 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                 return state
     return state
 
+def search_process(current_answer: list[str], list_text: list[str], old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, old_x: int, old_y: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    needs_enter, state = check_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+    for i in range(len(list_text)+3):
 
 def review_search_process(current_question: str, all_text: list[str], current_text: str, ai_answers: list[list], option_inputted: bool, state: ApplicationState, process=None):
     page = state["current_page"]["page"]
@@ -7576,8 +7655,8 @@ def load_test_user(state: ApplicationState):
 
     state["address_line1"] = "90 Holstein Ln"
     state["address_line2"] = ""
-    state["city"] = "Cheyenne"
-    state["user_state"] = "Wyoming"
+    state["city"] = "Atlanta"
+    state["user_state"] = "Georgia"
     state["country"] = "United States"
 
     state["work_authorized"] = True

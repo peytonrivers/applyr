@@ -77,6 +77,7 @@ class QuickSearchProcess(TypedDict):
 class SetupSelectProcess(TypedDict):
     action: str
     icon: list[int] | None
+    reason: str
 
 class FindIcon(TypedDict):
     icon: int
@@ -237,6 +238,7 @@ class DropdownProcess(TypedDict):
     desired_text: str | None
     action_text: str | None
     list_text: list[str] | None
+    move_down: bool | None
     reason: str
 
 
