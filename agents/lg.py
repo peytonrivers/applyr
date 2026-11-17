@@ -1921,16 +1921,8 @@ def expand_image(encoded_bytes: str):
     return encoded_bytes, boxes_details
 
 
-def check_search_options(
-    old_encoded_bytes: str,
-    old_boxes_details: list[dict],
-    old_page_height: int,
-    cut_off_height: int,
-    cropped_encoded_bytes: str,
-    cropped_boxes_details1: list[dict],
-    list_text: list[str],
-    state: ApplicationState
-):
+
+def check_search_options(old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, cropped_encoded_bytes: str, cropped_boxes_details1: list[dict], list_text: list[str], state: ApplicationState, used_enter: bool = False):
     page = state["current_page"]["page"]
 
     def combine_text(boxes_details, search_text):
@@ -1967,45 +1959,24 @@ def check_search_options(
 
     for i in range(len(list_text)):
 
-        encoded_bytes, full_page_width, full_page_height = screenshot_process(
-            state=state
-        )
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
 
         if full_page_height == old_page_height:
-            cropped_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(
-                encoded_bytes1=old_encoded_bytes,
-                encoded_bytes2=encoded_bytes
-            )
+            cropped_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
 
         else:
-            do_not_use_bytes, current_boxes_details, full_page_width, full_page_height = omniparser_process(
-                state=state
-            )
+            do_not_use_bytes, current_boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
 
-            cropped_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(
-                encoded_bytes1=old_encoded_bytes,
-                boxes_details1=old_boxes_details,
-                encoded_bytes2=encoded_bytes,
-                boxes_details2=current_boxes_details,
-                cut_off_height=cut_off_height,
-                full_page_width=full_page_width,
-                old_page_height=old_page_height,
-                state=state
-            )
+            cropped_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=current_boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
 
-        expanded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(
-            encoded_bytes=cropped_bytes, state=state
-        )
+        expanded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(encoded_bytes=cropped_bytes, state=state)
 
         current_text = combine_text(
             boxes_details=boxes_details,
             search_text=list_text[i]
         )
 
-        if not compare_text(
-            text1=original_text,
-            text2=current_text
-        ):
+        if not compare_text(text1=original_text, text2=current_text):
             return False, state
 
         if i < len(list_text) - 1:
@@ -2014,8 +1985,15 @@ def check_search_options(
 
             page.keyboard.type(list_text[i + 1])
 
-    return True, state
+    # Restore the first search text and press Enter if requested.
+    if used_enter and list_text:
+        for l in range(500):
+            page.keyboard.press("Delete")
 
+        page.keyboard.type(list_text[0])
+        page.keyboard.press("Enter")
+
+    return True, state
 
 
 def quick_select_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
@@ -6903,10 +6881,52 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                 return state
     return state
 
+def check_arrow_option(old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, desired_text: str, state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    comparison_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+
+    full_page_height = page.evaluate("""() => { return Math.max(
+        document.body.scrollHeight,
+        document.documentElement.scrollHeight,
+        document.body.offsetHeight,
+        document.documentElement.offsetHeight,
+        document.body.clientHeight,
+        document.documentElement.clientHeight
+    ); }""")
+
+    if old_page_height == full_page_height:
+        encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=comparison_bytes)
+
+    else:
+        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+
+        encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=comparison_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, old_page_height=old_page_height, full_page_width=full_page_width, state=state)
+
+    encoded_bytes, boxes_details, do_not_use, do_not_use2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
+
+    desired_text = normalize_text(desired_text)
+
+    for current_box in boxes_details:
+        content = normalize_text(current_box.get("content", ""))
+
+        print(f"Current box content: {content}")
+
+        if not content:
+            continue
+
+        if content == desired_text:
+            print(f"Found desired text: {content}")
+            return True, state
+
+    print(f"Desired text not found: {desired_text}")
+    return False, state
+
 def search_process(current_answer: list[str], list_text: list[str], old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, old_x: int, old_y: int, cut_off_height: int, state: ApplicationState):
     page = state["current_page"]["page"]
-    needs_enter, state = check_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+    used_enter, state = check_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
     for i in range(len(list_text)+3):
+        print("hello")
 
 def review_search_process(current_question: str, all_text: list[str], current_text: str, ai_answers: list[list], option_inputted: bool, state: ApplicationState, process=None):
     page = state["current_page"]["page"]
