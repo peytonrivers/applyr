@@ -52,6 +52,7 @@ class AnswerItem(TypedDict):
 
 class ExtraStepsProcess(TypedDict):
     action: str
+    current_question: str
     action_type: str | None
     icon: int | None
     current_option: int | None
@@ -241,6 +242,16 @@ class DropdownProcess(TypedDict):
     move_down: bool | None
     reason: str
 
+class SearchProcess(TypedDict):
+    action: str
+    icon: int | None
+    current_option: int | None
+    desired_option: int | None
+    total_options: int | None
+    current_text: str | None
+    move_up: bool | None
+    typed_search: bool | None
+    reason: str
 
 class ReviewMarkdownProcess(TypedDict):
     action: str | None
