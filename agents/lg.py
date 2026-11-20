@@ -320,7 +320,7 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
     image_width, image_height = image.size
     print(f"image pixel height: {image_height}")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]"""
@@ -2181,7 +2181,7 @@ def expand_image(encoded_bytes: str):
 
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
 
-    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
     response_data = response.json()
 
     encoded_bytes = response_data["encoded_bytes"]
@@ -4197,7 +4197,7 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
     pyautogui_bytes = buffer.getvalue()
     encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
     data = response.json()
     pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
@@ -5000,7 +5000,7 @@ def review_find_time_process(current_question: str, full_page_width: int, page_x
     pyautogui_bytes = buffer.getvalue()
     encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
     data = response.json()
     pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
@@ -5114,7 +5114,7 @@ def text_time_process(current_question: str, full_page_width: int, state: Applic
     pyautogui_bytes = buffer.getvalue()
     encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
     data = response.json()
     pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
@@ -5498,7 +5498,7 @@ def calendar_time_process(current_answer: list, desired_date: str, image1: bool,
         pyautogui_bytes = buffer.getvalue()
         encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
         data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        response = requests.post("http://127.0.0.1:8001/image_process", json=data)
         data = response.json()
         pyautogui_encoded_bytes = data["encoded_bytes"]
         boxes_details = data["boxes_details"]
@@ -6037,7 +6037,7 @@ def markdown_process(current_answer: list, ai_answers: list[list], markdown_type
         pyautogui_bytes = buffer.getvalue()
         pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
         data = {"image_input": pyautogui_encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        response = requests.post("http://127.0.0.1:8001/image_process", json=data)
         response = response.json()
         pyautogui_encoded_bytes = response["encoded_bytes"]
         pyautogui_boxes_details = response["boxes_details"]
@@ -6307,7 +6307,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
             pyautogui_bytes = buffer.getvalue()
             pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
             data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-            response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+            response = requests.post("http://127.0.0.1:8001/image_process", json=data)
             data = response.json()
             pyautogui_encoded_bytes = data["encoded_bytes"]
             pyautogui_boxes_details = data["boxes_details"]
@@ -7058,7 +7058,7 @@ def search_process( current_answer: str, list_text: list[str], state: Applicatio
         pyautogui_bytes = buffer.getvalue()
         pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
         data = {"image_input": pyautogui_encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        response = requests.post("http://127.0.0.1:8001/image_process", json=data)
         response = response.json()
         pyautogui_encoded_bytes = response["encoded_bytes"]
         pyautogui_boxes_details = response["boxes_details"]
@@ -8377,7 +8377,7 @@ Thank you for your consideration.
     screenshot = page.screenshot()
     encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8000/image_process",json=data)
+    response = requests.post("http://127.0.0.1:8001/image_process",json=data)
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     decoded_new_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
@@ -8511,7 +8511,7 @@ image.save(buffer, format="PNG")
 decoded_bytes = buffer.getvalue()
 encoded_bytes1 = base64.b64encode(decoded_bytes).decode("utf-8")
 data = {"image_input": encoded_bytes1, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+response = requests.post("http://127.0.0.1:8001/image_process", json=data)
 response = response.json()
 boxes_details1 = response["boxes_details"]
 
@@ -8522,7 +8522,7 @@ image.save(buffer, format="PNG")
 decoded_bytes = buffer.getvalue()
 encoded_bytes2 = base64.b64encode(decoded_bytes).decode("utf-8")
 data = {"image_input": encoded_bytes2, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+response = requests.post("http://127.0.0.1:8001/image_process", json=data)
 response = response.json()
 boxes_details2 = response["boxes_details"]
 
