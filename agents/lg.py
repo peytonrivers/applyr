@@ -107,7 +107,7 @@ url = "https://talent.lowes.com/us/en/job/JR-02623542/Exploratory-Software-Engin
 # url = "https://www.vanguardjobs.com/job/23948133/college-to-corporate-it-internship-application-development-nc-charlotte-nc/?utm_medium=%22mcloud-jobads%22&utm_campaign=Technology&utm_content=College%20to%20Corporate%20IT%20Internship-Application%20Development%20(NC)&utm_term=182781&source=Corporate_Website"
 url = "https://jobs.newellbrands.com/job/Huntersville-2027-Newell-Brands-Intern-Sales-AI-&-Analytics-Developer-Intern-Nort/1431281200/?utm_source=ZipRecruiter&utm_campaign=J2W_ZIP"
 url = "https://testing-kohl-psi.vercel.app/"
-# url = "https://paypal.eightfold.ai/careers/job/274922982814?source=JobBoardIndeed-Organic"
+url = "https://paypal.eightfold.ai/careers/job/274922982814?source=JobBoardIndeed-Organic"
 
 print(url.title)
 model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000], ["gpt-6-luna", 0.10 / 1000000, 0.50 / 1000000, 0.01 / 1000000]]
@@ -178,125 +178,74 @@ def details_process(details: dict):
         if dash_count == 3:
             break
         model_name += letter
-    return new_tokens, model_name  
+    return new_tokens, model_name                
 
+def empty_pixel_process(state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
 
-def empty_pixel_process(encoded_bytes: str, boxes_details: list[dict], full_page_width: int, full_page_height: int):
-    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-9"))
-    buffer = io.BytesIO(decoded_bytes)
-    image = Image.open(buffer)
-    image_width, image_height = image.size
-    coordinates = []
-    remove_columns = []
-    remove_rows = []
-    for i in range(len(boxes_details)):
-        current_box = boxes_details[i]
-        bbox = current_box["bbox"]
-        coordinate = [bbox[0], bbox[1], bbox[2], bbox[3]]
-        coordinates.append(coordinate)
-
-    for i in range(len(image_width)):
-        remove_rows.append(i)
-    
-    for i in range(len(image_height)):
-        remove_columns.append(i)
-
-    
-                           
-
-def empty_pixel_process(encoded_bytes: str, boxes_details: list[dict], full_page_width: int, full_page_height: int):
-    coordinates = []
-    for i in range(len(boxes_details)):
-        current_box = boxes_details[i]
-        bbox = current_box["bbox"]
-        coordinates.append([bbox[0], bbox[1], bbox[2], bbox[3]])
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image = Image.open(buffer)
-    format = image.format
-    if format != "PNG":
-        image.save("my_screenshot.png")
-    image_width, image_height = image.size
-    np_image = np.array(image)
-    cv_image = cv2.cvtColor(np_image, cv2.COLOR_RGB2BGR)
-    black = (0, 0, 0)
-    for i in range(len(coordinates)):
-        coordinate = coordinates[i]
-        x1 = round(coordinate[0] * image_width)
-        y1 = round(coordinate[1] * image_height)
-        x2 = round(coordinate[2] * image_width)
-        y2 = round(coordinate[3] * image_height)
-        height_diff = y2 - y1
-        for l in range(height_diff):
-            cv_image = cv2.line(cv_image, (x1, y1), (x2, y1), black, 3)
-            y1 += 1
-    cv_image = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
-    _, cv_image = cv2.threshold(cv_image, 127, 255, cv2.THRESH_BINARY)
-    image_height, image_width = cv_image.shape
+    image = Image.open(io.BytesIO(decoded_bytes)).convert("RGB")
 
-    mod_width = image_width % 5
-    mod_height = image_height % 5
+    if image.height > 500:
+        image = image.crop((0, 0, image.width, 500))
 
-    new_width = image_width - mod_width
-    new_height = image_height - mod_height
+    full_page_width, full_page_height = image.size
 
-    width_divider = int(new_width / 5)
-    height_divider = int(new_height / 5)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    encoded_bytes = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    width_index = [new_width]
-    height_index = [new_height]
-    for size in range(4):
-        new_height -= height_divider
-        new_width -= width_divider
-        height_index.insert(0, new_height)
-        width_index.insert(0, new_width)
+    do_not_use, boxes_details, fullpage_width, do_not_use_height = omniparser_process(
+        encoded_bytes=encoded_bytes,
+        state=state
+    )
 
-    perfect_section = width_divider * height_divider
+    width = full_page_width
+    height = full_page_height
 
-    section_coordinates = []
+    # Start with all pixels available
+    available_pixels = np.ones((height, width), dtype=np.uint8)
 
-    for p in range(len(height_index)):
-        current_height = height_index[p]
-        for o in range(len(width_index)):
-            current_width = width_index[o]
-            section_coordinates.append([current_height - height_divider,current_width - width_divider,current_height, current_width])
-    white_section_tracker = []
+    # First remove every banned pixel inside bounding boxes
+    for box_detail in boxes_details:
+        box = box_detail["bbox"]
 
-    for i in range(len(height_index)):
-        current_height = height_index[i]
-        if i == 0:
-            prior_height = 0
-        else:
-            prior_height = height_index[i-1]
-        for l in range(len(width_index)):
-            white_pixel_tracker = 0
-            current_width = width_index[l]
-            if l == 0:
-                prior_width = 0
-            else:
-                prior_width = width_index[l-1]
-            for j in range(prior_height, current_height):
-                for m in range(prior_width, current_width):
-                    current_pixel = cv_image[j, m]
-                    if current_pixel == 255:
-                        white_pixel_tracker += 1
-            white_section_tracker.append(white_pixel_tracker)
-    max_section = white_section_tracker[0]
-    max_index = 0
-    for n in range(len(white_section_tracker)):
-        current_section = white_section_tracker[n]
-        if current_section > max_section:
-            max_section = current_section
-            max_index = n
-    max_section_coordinates = section_coordinates[max_index]
-    y1, x1, y2, x2 = max_section_coordinates
+        x1 = max(0, round(box[0] * width) - 2)
+        y1 = max(0, round(box[1] * height) - 10)
+        x2 = min(width, round(box[2] * width) + 2)
+        y2 = min(height, round(box[3] * height) + 10)
 
-    cropped_x = (x1 + x2) / 2
-    cropped_y = (y1 + y2) / 2
-    white_x = (full_page_width / image_width ) * cropped_x
-    white_y = (full_page_height / image_height) * cropped_y
-    return white_x, white_y
+        available_pixels[y1:y2, x1:x2] = 0
 
+    # No safe pixels remain
+    if not np.any(available_pixels):
+        return None, None
+
+    # Find distance from each available pixel to nearest banned pixel
+    distances = cv2.distanceTransform(
+        available_pixels,
+        cv2.DIST_L2,
+        cv2.DIST_MASK_PRECISE
+    )
+
+    # Only consider pixels that were not banned
+    distances[available_pixels == 0] = -1
+
+    # Find safest remaining pixel
+    page_y, page_x = np.unravel_index(
+        np.argmax(distances),
+        distances.shape
+    )
+
+    page_x = int(page_x)
+    page_y = int(page_y)
+
+    print(f"Safest pixel: ({page_x}, {page_y})")
+    print(f"Distance from nearest banned pixel: {distances[page_y, page_x]:.2f}")
+
+    return page_x, page_y
+    
 
 def coordinates_process(coordinates: list, full_page_width, full_page_height):
     x1 = coordinates[0]
@@ -557,12 +506,12 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
             "image_input": cropped_encoded_bytes,
             "box_threshold": 0.05,
             "iou_threshold": 0.10,
-            "use_paddleocr": True,
+            "use_paddleocr": False,
             "imgsz": 640
         }
 
         response = requests.post(
-            "http://127.0.0.1:8000/image_process",
+            "http://127.0.0.1:8001/image_process",
             json=data,
             timeout=180
         )
@@ -1177,7 +1126,6 @@ def answser_question_process(state: ApplicationState):
             content = current_box["content"]
             page_elements.append([icon, coordinates, content])
     
-        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height)
         body_text = page.locator("body").inner_text() or ""
         # print(f"page elements: {page_elements}")
         prompt = f"""
@@ -1329,7 +1277,7 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
         print(f"AI Answers: {ai_answers}")
         context = state.get("context")
         page_count = len(context.pages)
-        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, white_x=white_x, white_y=white_y, page_count=page_count)
+        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count)
         state, decision, all_reasons = review_answer_question_process(state=state, all_text=all_text, all_reasons=all_reasons)
         del all_text[-1]
         if decision == "same_form":
@@ -1442,7 +1390,7 @@ Ex 4:
     all_reasons.append(reason)
     return state, decision, all_reasons
 
-def action_process(ai_answers: list[list], boxes_details: list[dict], state: ApplicationState, full_page_width: int, full_page_height: int, white_x=None, white_y=None, process=None, page_count=None):
+def action_process(ai_answers: list[list], boxes_details: list[dict], state: ApplicationState, full_page_width: int, full_page_height: int, process=None, page_count=None):
     ai_answers.sort(key=lambda x: {"skip": 0, "fill": 1, "delete": 2, "click": 3, "extra_steps": 4, "upload_resume": 5, "upload_cover_letter": 6, "click_and_view": 7, "add_more": 8, "submit": 9}.get(x[0].lower(), 999))
     click_and_view_count = 0
     print(f"ai answers: {ai_answers}")
@@ -1466,7 +1414,7 @@ def action_process(ai_answers: list[list], boxes_details: list[dict], state: App
             current_box = boxes_details[icon]
         else:
             current_box = -1
-        state = execute_action(current_answer=current_answer, current_box=current_box, state=state, full_page_width=full_page_width, full_page_height=full_page_height, white_x=white_x, white_y=white_y, process=process, click_and_view_count=click_and_view_count, page_count=page_count)
+        state = execute_action(current_answer=current_answer, current_box=current_box, state=state, full_page_width=full_page_width, full_page_height=full_page_height, process=process, click_and_view_count=click_and_view_count, page_count=page_count)
     return state
 
 def find_icon(current_answer: dict, state: ApplicationState):
@@ -1527,7 +1475,7 @@ icon: 48
     page_x, page_y = coordinates_process(coordinates=coordinates, full_page_width=full_page_width, full_page_height=full_page_height)
     return encoded_bytes, page_x, page_y, state
 
-def execute_action(current_answer: list, current_box: dict, full_page_width: int, full_page_height: int, page_count: int, state: ApplicationState, white_x=None, white_y=None, process=None, click_and_view_count=None, ai_answers=None):
+def execute_action(current_answer: list, current_box: dict, full_page_width: int, full_page_height: int, page_count: int, state: ApplicationState, process=None, click_and_view_count=None, ai_answers=None):
     page = state["current_page"]["page"]
     context = state.get("context")
     action = current_answer[0] if len(current_answer ) > 0 else None
@@ -1553,17 +1501,17 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         for i in range(1000):
             page.keyboard.press("Backspace")
         page.mouse.click(page_x, page_y)
-        time.sleep(0.1)
+        time.sleep(0.01)
         new_page_count = len(context.pages)
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
-        time.sleep(0.1)
+        time.sleep(0.01)
         page.keyboard.type(action_text)
-        time.sleep(0.1)
+        time.sleep(0.01)
+        white_x, white_y = empty_pixel_process(state=state)
         if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
             page.mouse.click(white_x, white_y)
-            time.sleep(1)
     elif action == "delete":
         page.mouse.click(page_x, page_y)
         time.sleep(0.1)
@@ -1581,22 +1529,22 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         if not action_text:
             action_text = ""
         page.mouse.click(page_x, page_y)
-        time.sleep(0.1)
+        time.sleep(0.01)
         new_page_count = len(context.pages)
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
-        time.sleep(0.1)
+        time.sleep(0.01)
         for i in range(500):
             page.keyboard.press("ArrowRight")
         for i in range(500):
             page.keyboard.press("Backspace")
         page.keyboard.type(action_text)
-        time.sleep(0.1)
+        time.sleep(0.01)
         page.keyboard.press("Enter")
 
-        time.sleep(0.1)
-
+        time.sleep(0.01)
+        white_x, white_y = empty_pixel_process(state=state)
         if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
             page.mouse.click(white_x, white_y)
             time.sleep(0.1)
@@ -1605,20 +1553,9 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
                 all_pages = context.pages
                 all_pages[-1].close()
     elif action == "white_pixel":
-        if full_page_height >= 500:
-            full_page_height = 500
-        pyautogui_image = pyautogui.screenshot(region=(40, 120, full_page_width, full_page_height))
-        buffer = io.BytesIO()
-        pyautogui_image.save(buffer, format="PNG")
-        pyautogui_bytes = buffer.getvalue()
-        encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
-        encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(encoded_bytes=encoded_bytes, full_page_width=full_page_width, full_page_height=full_page_height, state=state)
-        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height)
-        white_x += 40
-        white_y += 120
-        print(f"white x: {white_x}, white y: {white_y}")
-        pyautogui.click(x=white_x, y=white_y)
-        time.sleep(0.1)
+        page_x, page_y = empty_pixel_process(state=state)
+        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
+            page.mouse.click(white_x, white_y)
         pyautogui.moveTo(0, 0)
     elif action == "extra_steps":
         current_question = current_answer[2] if len(current_answer ) > 2 else None
@@ -1633,6 +1570,7 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
+        pyautogui.hotkey("down")
         pyautogui.hotkey("down")
         state = extra_steps_process(current_answer=current_answer, old_encoded_bytes=encoded_bytes, old_boxes_details=boxes_details, old_page_width=full_page_width, old_page_height=full_page_height, page_x=page_x, page_y=page_y, cut_off_height=page_y, state=state)
     elif action == "time":
@@ -1654,6 +1592,7 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
+        white_x, white_y = empty_pixel_process(state=state)
         if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
             page.mouse.click(white_x, white_y)
             time.sleep(0.1)
@@ -1671,7 +1610,6 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         elif option_difference > 0:
             for i in range(option_difference):
                 pyautogui.hotkey("down")
-                print(f"pressed down {i+1} times")
             time.sleep(0.1)
             pyautogui.hotkey("enter")
         else:
@@ -1725,7 +1663,7 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
             pyautogui.press("right")
             time.sleep(0.5)
             pyautogui.press("enter")
-            time.sleep(3)
+            time.sleep(1)
             run = subprocess.run(["rm", full_path], capture_output=True)
 
     elif action == "upload_cover_letter":
@@ -1829,6 +1767,7 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
+        white_x, white_y = empty_pixel_process(state=state)
         if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
             page.mouse.click(white_x, white_y)
             time.sleep(0.1)
@@ -4332,8 +4271,9 @@ How to Handle the search Action
 
 1. First look at the current question and the USER PROFILE and decide what is the best way to answer this, with the highest likelihood that a suggestion pops up for the answer.
 2. Some Search Action will need a list of answers and some will just need one individual answer. Your job is to look at the current question and the USER PROFILE to be able to determine if it is a single word type of response or is it multiple single word responses need to be inputed, you also need to find the exact current question.
-    - Ex 1: {{action: search, list_text: [college], current_question: What university did you attend?}}
-    - Ex 2: {{action: search, list_text: [skill 1, skill 2, skill 3], What skills do you have?}}
+3. Also give us the icon that we will be clicking to input the answer, and the list of answers that we will be inputing.
+    - Ex 1: {{action: search, icon: 6, list_text: [college], current_question: What university did you attend?}}
+    - Ex 2: {{action: search, icon: 10, list_text: [skill 1, skill 2, skill 3], current_question: What skills do you have?}}
 
 How to Handle the time Action:
 If the Time has dropdown options, go back up to the dropdown subprocess and choose that.
@@ -4469,13 +4409,23 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, full_page_height1=full_page_height, full_page_height2=new_page_height, desired_bbox=current_bbox)
             current_box["bbox"] = desired_box
             middle_x, middle_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
-            print("---------------------------------------------------------------------------------------------")
-            pyautogui.moveTo(middle_x * full_page_width, middle_y * full_page_height)
-            time.sleep(5)
             state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
         print("going to dropdown process")
         state = dropdown_process(current_answer=current_answer, previous_action=action_type, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, page_x=page_x, page_y=page_y, first_text=first_text, desired_text=desired_text, desired_option=desired_option, total_options=total_options, image1=image1, image2=image2, state=state)
     elif action == "search":
+        context = state.get("context")
+        page_count = len(context.pages)
+        new_answer = ["click", icon]
+        current_box = boxes_details[icon]
+        current_bbox = current_box["bbox"]
+        if min_cut_off_height is None or max_cut_off_height is None:
+            new_page_height = full_page_height
+        else:
+            new_page_height = max_cut_off_height - min_cut_off_height
+        desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, full_page_height1=full_page_height, full_page_height2=new_page_height, desired_bbox=current_bbox)
+        current_box["bbox"] = desired_box
+        page_x, page_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
+        state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
         state = search_process(current_answer=current_answer, list_text=list_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, old_x=page_x, old_y=page_y, state=state)
     elif action == "time":
         state = time_process(current_answer=current_answer, desired_date=desired_date, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, full_page_width=full_page_width, page_x=page_x, page_y=page_y, image1=image1, image2=image2, state=state)
@@ -8176,8 +8126,6 @@ def click_and_view_process(state: ApplicationState):
             page_elements.append([current_box["icon"], current_box["type"], coordinates, current_box["content"]])
 
 
-        white_x, white_y = empty_pixel_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details, full_page_width=full_page_width, full_page_height=full_page_height)
-
         prompt = f"""
 You are an AI job-application assistant completing fields revealed by an
 "Add more" or "Add another" option.
@@ -8339,10 +8287,10 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                 add_more = True
 
         if not add_more:
-            state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, white_x=white_x, white_y=white_y)
+            state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count)
             return state
 
-        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, white_x=white_x, white_y=white_y)
+        state = action_process(ai_answers=ai_answers, boxes_details=boxes_details, state=state, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count)
 
 
     return state
