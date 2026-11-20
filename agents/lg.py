@@ -55,9 +55,6 @@ load_dotenv()
 
 memory = psutil.virtual_memory()
 openai_key = os.getenv("OPENAI_KEY")
-meta_key = os.getenv("META_KEY")
-
-META_MODEL = "Qwen/Qwen3-VL-30B-A3B-Instruct"
 
 MODEL_NAME = "gpt-5.4-nano"
 MODEL_NAME2 = "gpt-6-luna"
@@ -110,7 +107,7 @@ url = "https://talent.lowes.com/us/en/job/JR-02623542/Exploratory-Software-Engin
 # url = "https://www.vanguardjobs.com/job/23948133/college-to-corporate-it-internship-application-development-nc-charlotte-nc/?utm_medium=%22mcloud-jobads%22&utm_campaign=Technology&utm_content=College%20to%20Corporate%20IT%20Internship-Application%20Development%20(NC)&utm_term=182781&source=Corporate_Website"
 url = "https://jobs.newellbrands.com/job/Huntersville-2027-Newell-Brands-Intern-Sales-AI-&-Analytics-Developer-Intern-Nort/1431281200/?utm_source=ZipRecruiter&utm_campaign=J2W_ZIP"
 url = "https://testing-kohl-psi.vercel.app/"
-url = "https://paypal.eightfold.ai/careers/job/274922982814?source=JobBoardIndeed-Organic"
+# url = "https://paypal.eightfold.ai/careers/job/274922982814?source=JobBoardIndeed-Organic"
 
 print(url.title)
 model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000], ["gpt-6-luna", 0.10 / 1000000, 0.50 / 1000000, 0.01 / 1000000]]
@@ -714,7 +711,7 @@ def decide_page(state: ApplicationState):
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    image.show()
+    # image.show()
     page_elements = []
     for i in range(len(boxes_details)):
         current_box = boxes_details[i]
@@ -1169,7 +1166,7 @@ def answser_question_process(state: ApplicationState):
         decoded_bytes2 = base64.b64decode(encoded_bytes2.encode("utf-8"))
         buffer = io.BytesIO(decoded_bytes2)
         image = Image.open(buffer)
-        image.show()
+        # image.show()
         page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -1636,6 +1633,7 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
+        pyautogui.hotkey("down")
         state = extra_steps_process(current_answer=current_answer, old_encoded_bytes=encoded_bytes, old_boxes_details=boxes_details, old_page_width=full_page_width, old_page_height=full_page_height, page_x=page_x, page_y=page_y, cut_off_height=page_y, state=state)
     elif action == "time":
         current_question = current_answer[2] if len(current_answer ) > 2 else None
@@ -1673,6 +1671,7 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         elif option_difference > 0:
             for i in range(option_difference):
                 pyautogui.hotkey("down")
+                print(f"pressed down {i+1} times")
             time.sleep(0.1)
             pyautogui.hotkey("enter")
         else:
@@ -4253,7 +4252,6 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
 
         if complete:
             return state
-    pyautogui.hotkey("down")
     pyautogui_image = pyautogui.screenshot(region=(10, 40, old_page_width, 910))
     buffer = io.BytesIO()
     pyautogui_image.save(buffer, format="PNG")
@@ -4282,7 +4280,7 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    image.show()
+    # image.show()
     comparison_page_width2, comparison_page_height2 = image.size
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
     page_elements = []
@@ -4324,11 +4322,11 @@ How to Handle dropdown Action
 
 1. First look at the body text and the image and find all the options for the current question
 2. Determine if you can click the option you want to click look at the page elements in image 1. If you can stop and return something like this.
-    - You need to find the right icon to click, then list the current_option, option choice, total_options, first_text, and desired_text, determine if image1 has options, determine if image2 has options, and what is the exact current question.
-    - Ex: {{action: dropdown, dropdown_type: click, icon: 19, current_option: 0, desired_option: 8, total_options: 10, first_text: ex, desired_text: yes, image1: True, image2: False, current_question: What state are you from?}}
+    - You need to find the right icon to click, then list the current_option (usually the highlighted option in the photo or it's just the first option/dropdown option), desired_option, total_options, current_text, and desired_text, determine if image1 has options, determine if image2 has options, and what is the exact current question.
+    - Ex: {{action: dropdown, dropdown_type: click, icon: 19, current_option: 5, desired_option: 8, total_options: 10, current_text: maybe, desired_text: yes, image1: True, image2: False, current_question: What state are you from?}}
 3. If you can't click the icon that is available then you need to find the current_option that we are on in the image, then find the option number that we want to go to, return something like this.
-    - You need to find the current_option, the option_choice, the total_options available, the first_text (the first option), and the desired_text, determine if image1 has options, determine if image2 has options, and what is the exact current question.
-    - Ex: {{action: dropdown, dropdown_type: arrow, current_option: 12, desired_option: 5, total_options: 24, first_text: Alabama, desired_text: example, image1: True, image2: True, current_question: What city are you from?}}
+    - You need to find the current_option (usually the highlighted option in the photo or it's just the first option/dropdown option), the desired_option, the total_options available, the first_text (the first option), and the desired_text, determine if image1 has options, determine if image2 has options, and what is the exact current question.
+    - Ex: {{action: dropdown, dropdown_type: arrow, current_option: 12, desired_option: 5, total_options: 24, current_text: Alabama, desired_text: example, image1: True, image2: True, current_question: What city are you from?}}
 
 How to Handle the search Action
 
@@ -4451,18 +4449,13 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
     print(f"current answer in extra steps: {current_answer}")
     if action == "dropdown":
         if action_type == "arrow":
-            if current_option and desired_option:
-                option_difference = desired_option - current_option
-                if not image1 and image2:
-                    page.mouse.click(page_x, page_y)
-                if option_difference == 0:
-                    pyautogui.hotkey("enter")
-                elif option_difference > 0:
-                    for i in range(option_difference):
-                        pyautogui.hotkey("down")
-                else:
-                    for i in range(abs(option_difference)):
-                        pyautogui.hotkey("up")
+            print("going to arrow process")
+            print(f"current_option: {current_option}, desired_option: {desired_option}")
+            if current_option is not None and desired_option is not None:
+                print("made it to the real arrow")
+                new_answer = ["arrow", current_option, desired_option]
+                page_count = len(state.get("context").pages)
+                state = execute_action(current_answer=new_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
         if action_type == "click":
             context = state.get("context")
             page_count = len(context.pages)
@@ -6355,7 +6348,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
         decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
         buffer1 = io.BytesIO(decoded_bytes)
         image1 = Image.open(buffer1)
-        image1.show()
+        # image1.show()
         full_page_width2, full_page_height2 = image1.size
         if not image1:
             pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
@@ -6414,7 +6407,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     - If the desired option is on the screen then click it. Return something like this.
     - Ex: {{action: click, icon: 12, reason: whatever your reason is (your reason helps future answers)}}
     - If the desired option is not seen then follow this return process. 
-    - Find the current option in the photo and the desired option, the total amount of options, first option text that appears in the photo, desired text. Return something like this.
+    - Find the current option in the photo and the desired_option, the total amount of options, first option text that appears in the photo, desired text. Return something like this.
     - Ex: {{action: arrow, current_option: 8, desired_option: 4, total_options: 80, reason: whatever your reason is (your reason helps future answers)}}
     - If there is text that needs to be inputted for the current question, find the icon that needs to be clicked and look at the User Profile to answer the Current Question.
     - return something like this (just because there is a place to input text for the current question doesn't mean we need to input text, think logically to determine if we do or don't need to).

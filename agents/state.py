@@ -56,7 +56,10 @@ class ExtraStepsProcess(TypedDict):
     action_type: str | None
     icon: int | None
     current_option: int | None
-    option_choice: int | None
+    desired_option: int | None
+    current_text: str | None
+    desired_text: str | None
+    total_options: int | None
     list_text: list[str] | None
     desired_date: str | None
     left_arrow: int | None
