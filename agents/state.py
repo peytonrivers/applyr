@@ -366,6 +366,8 @@ class ApplicationState(TypedDict):
     # ── Date ────────────────────────────────────
     date: str
 
+    total_ai_calls: int
+    total_omniparser_calls: int
     submit_element: dict
     work_experience: list[dict]
     education: list[dict]

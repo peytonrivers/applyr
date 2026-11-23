@@ -68,7 +68,7 @@ multiple_question_llm = llm.with_structured_output(MultipleQuestion, include_raw
 all_elements_llm = llm.with_structured_output(AllElements, include_raw=True)
 new_cookies_process_llm = llm.with_structured_output(NewCookiesProcess, include_raw=True)
 cookies_process_llm = llm.with_structured_output(CookiesProcess, include_raw=True)
-decide_page_llm = llm2.with_structured_output(DecidePage, include_raw=True)
+decide_page_llm = llm.with_structured_output(DecidePage, include_raw=True)
 apply_process_llm = llm2.with_structured_output(ApplyProcess, include_raw=True)
 signup_process_llm = llm.with_structured_output(SignupProcess, include_raw=True)
 forms_action_llm = llm.with_structured_output(FormsAction, include_raw=True)
@@ -104,10 +104,15 @@ url = "https://testing-kohl-psi.vercel.app/"
 url = "https://www.steelfab-inc.com/careers/software-developer-intern-charlotte-nc/?careers=Software%20Developer%20Intern%20Charlotte%20Nc&utm_source=ziprecruiter"
 url = "https://jobs.intuit.com/job/-/-/27595/100620927520?cid=job_id_click_us_swe-fs-fy27_cn_text_job_int-tm&p_sid=DDYlORb&p_uid=ejALfQGNMq&ss=paid&utm_campaign=&utm_content=pj_board&utm_medium=jobad&utm_source=indeed+organic"
 url = "https://talent.lowes.com/us/en/job/JR-02623542/Exploratory-Software-Engineering-Undergrad-Internship-Summer-2027?utm_source=617ZipRecruiterOrganic&cid=01a1f161-40bd-7568-9763-73aaeae1b8fd"
-# url = "https://www.vanguardjobs.com/job/23948133/college-to-corporate-it-internship-application-development-nc-charlotte-nc/?utm_medium=%22mcloud-jobads%22&utm_campaign=Technology&utm_content=College%20to%20Corporate%20IT%20Internship-Application%20Development%20(NC)&utm_term=182781&source=Corporate_Website"
+url = "https://www.vanguardjobs.com/job/23948133/college-to-corporate-it-internship-application-development-nc-charlotte-nc/?utm_medium=%22mcloud-jobads%22&utm_campaign=Technology&utm_content=College%20to%20Corporate%20IT%20Internship-Application%20Development%20(NC)&utm_term=182781&source=Corporate_Website"
 url = "https://jobs.newellbrands.com/job/Huntersville-2027-Newell-Brands-Intern-Sales-AI-&-Analytics-Developer-Intern-Nort/1431281200/?utm_source=ZipRecruiter&utm_campaign=J2W_ZIP"
 url = "https://testing-kohl-psi.vercel.app/"
 url = "https://paypal.eightfold.ai/careers/job/274922982814?source=JobBoardIndeed-Organic"
+url = "https://jobs.lever.co/kobie/a6173028-d795-4841-b247-9fb0421b405e?source=remote.com&utm_source=chatgpt.com" #lever
+url = "https://job-boards.greenhouse.io/axs/jobs/8566918002?gh_src=xlqafhy22us&utm_source=Indeed&utm_medium=organic&utm_campaign=Indeed" #greenhouse
+# url = "https://jobs.ashbyhq.com/render/af5b6699-2e4a-47de-99f7-664baa738190/?utm_source=chatgpt.com" # ashby
+url = "https://jobs.smartrecruiters.com/WesternDigital/744000138717897?utm_source=chatgpt.com"
+url = "https://edel.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001/job/24670"
 
 print(url.title)
 model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000], ["gpt-6-luna", 0.10 / 1000000, 0.50 / 1000000, 0.01 / 1000000]]
@@ -287,8 +292,39 @@ def page_width_and_height_process(state: ApplicationState):
     real_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight )}""")
     print(f"image width: {i}")
     print(f"image height: {real_height}")
-    page.set_viewport_size({"width": 1300, "height": real_height})
+    page.set_viewport_size({"width": 1400, "height": real_height})
     return 1400, real_height
+
+def get_active_element(state: ApplicationState):
+    page = state["current_page"]["page"]
+
+    # Method 1: Playwright focus locator
+    try:
+        focused = page.locator(":focus")
+
+        if focused.count() > 0:
+            playwright_element = focused.first.evaluate(
+                "(el) => el.outerHTML"
+            )
+            if playwright_element is not None:
+                return playwright_element
+
+    except Exception as e:
+        print(f"Playwright focus error: {e}")
+
+    # Method 2: JavaScript document.activeElement
+    try:
+        javascript_element = page.evaluate(
+            "() => document.activeElement?.outerHTML ?? null"
+        )
+
+        if javascript_element is not None:
+            return javascript_element
+
+    except Exception as e:
+        print(f"JavaScript focus error: {e}")
+
+    return None
 
 def page_loaded(state: ApplicationState):
     page = state["current_page"]["page"]
@@ -299,14 +335,27 @@ def page_loaded(state: ApplicationState):
             return True
     return False
 
-def screenshot_process(state: ApplicationState):
+def screenshot_process(state: ApplicationState, viewport=False):
     page = state["current_page"]["page"]
     print(page)
     page.wait_for_load_state("load")
     page_loaded(state=state)
-    full_page_width, full_page_height = page_width_and_height_process(state=state)
+    print(f"viewport: {viewport}")
+    print("----------------------------------------------")
+    if viewport:
+        print("going through viewport------------------------------------------------------------------------------------------")
+        full_page_width, full_page_height = page_width_and_height_process(state=state)
+    else:
+        full_page_width = page.evaluate("""() => { return Math.max( document.body.scrollWidth, document.documentElement.scrollWidth, document.body.offsetWidth, document.documentElement.offsetWidth, document.body.clientWidth, document.documentElement.clientWidth ); }""")
+        full_page_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight ); }""")
+    print(f"full page width: {full_page_width}")
+    print(f"full page height: {full_page_height}")
     screenshot = page.screenshot()
     encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
+    decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+    image = Image.open(io.BytesIO(decoded_bytes)).convert("RGB")
+    print(f"Total AI calls: {state['total_ai_calls']}")
+    print(f"Total OmniParser calls: {state['total_omniparser_calls']}")
     return encoded_bytes, full_page_width, full_page_height
 """
 def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_width=None, full_page_height=None):
@@ -320,7 +369,9 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
     image_width, image_height = image.size
     print(f"image pixel height: {image_height}")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    state["total_omniparser_calls"] += 1
+    print(f"total omniparser calls: {state['total_omniparser_calls']}")
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     boxes_details = response_data["boxes_details"]"""
@@ -474,25 +525,65 @@ class BoxAnnotator:
 
 
 
-def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_width=None, full_page_height=None):
+def omniparser_process(state: ApplicationState, viewport=False, encoded_bytes=None, full_page_width=None, full_page_height=None):
     page = state["current_page"]["page"]
 
     if not encoded_bytes:
-        encoded_bytes, full_page_width, full_page_height = screenshot_process(state)
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(
+            state,
+            viewport=viewport
+        )
 
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     image = Image.open(io.BytesIO(decoded_bytes)).convert("RGB")
 
     image_width, image_height = image.size
+    if image_height <= 1000:
+        encoded_bytes, boxes_details = expand_image(encoded_bytes=encoded_bytes, state=state)
+        if full_page_width is None or full_page_height is None:
+            full_page_width = image_width
+            full_page_height = image_height
+        return encoded_bytes, boxes_details, full_page_width, full_page_height
 
     max_height = 3000
     all_boxes_details = []
 
-    # STEP 1: Split the image into chunks and run OmniParser.
-    for start_y in range(0, image_height, max_height):
-        end_y = min(start_y + max_height, image_height)
+    # STEP 1: Calculate chunk boundaries.
+    chunks = []
 
-        cropped_image = image.crop((0, start_y, image_width, end_y))
+    if image_height <= max_height:
+        chunks.append((0, image_height))
+
+    else:
+        start_y = 0
+
+        # Continue splitting into 3000px chunks until
+        # the remaining height is 6000px or less.
+        while image_height - start_y > max_height * 2:
+            end_y = start_y + max_height
+            chunks.append((start_y, end_y))
+            start_y = end_y
+
+        # Split the final remaining height into two equal chunks.
+        remaining_height = image_height - start_y
+        middle_y = start_y + remaining_height // 2
+
+        chunks.append((start_y, middle_y))
+        chunks.append((middle_y, image_height))
+
+    print(f"Image height: {image_height}")
+    print(f"Total chunks: {len(chunks)}")
+    print(f"Chunk heights: {[end - start for start, end in chunks]}")
+
+    # STEP 2: Process each chunk through OmniParser.
+    for l, (start_y, end_y) in enumerate(chunks):
+        print(f"Processing chunk {l + 1}/{len(chunks)}")
+        print(f"Chunk height: {end_y - start_y}")
+
+        cropped_image = image.crop(
+            (0, start_y, image_width, end_y)
+        )
+
         cropped_width, cropped_height = cropped_image.size
 
         buffer = io.BytesIO()
@@ -511,9 +602,15 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
         }
 
         response = requests.post(
-            "http://127.0.0.1:8001/image_process",
+            "http://127.0.0.1:8000/image_process",
             json=data,
             timeout=180
+        )
+
+        state["total_omniparser_calls"] += 1
+        print(
+            f"total omniparser calls: "
+            f"{state['total_omniparser_calls']}"
         )
 
         response.raise_for_status()
@@ -521,7 +618,7 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
         response_data = response.json()
         chunk_boxes_details = response_data["boxes_details"]
 
-        # STEP 2: Convert chunk coordinates to full-image coordinates.
+        # STEP 3: Convert chunk coordinates to full-image coordinates.
         for box in chunk_boxes_details:
             box = box.copy()
 
@@ -539,7 +636,7 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
 
             all_boxes_details.append(box)
 
-    # STEP 3: Sort all elements globally by Y, then X.
+    # STEP 4: Sort all elements globally by Y, then X.
     all_boxes_details.sort(
         key=lambda box: (
             box["bbox"][1],
@@ -547,18 +644,18 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
         )
     )
 
-    # STEP 4: Renumber the actual icon field sequentially.
+    # STEP 5: Renumber the actual icon field sequentially.
     for index, box in enumerate(all_boxes_details):
         box["icon"] = index
 
-    # STEP 5: Verify that icons are sequential and unique.
+    # STEP 6: Verify that icons are sequential and unique.
     icons = [box["icon"] for box in all_boxes_details]
 
     assert icons == list(range(len(all_boxes_details))), (
         "OmniParser icon numbering is not sequential."
     )
 
-    # STEP 6: Prepare bounding boxes and labels.
+    # STEP 7: Prepare bounding boxes and labels.
     # The labels use the NEW icon values.
     xyxy = []
     labels = []
@@ -575,7 +672,7 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
 
         labels.append(str(box["icon"]))
 
-    # STEP 7: Draw bounding boxes after sorting and renumbering.
+    # STEP 8: Draw bounding boxes after sorting and renumbering.
     annotated_frame = np.asarray(image).copy()
 
     if xyxy:
@@ -598,7 +695,7 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
             image_size=(image_width, image_height)
         )
 
-    # STEP 8: Encode the annotated screenshot.
+    # STEP 9: Encode the annotated screenshot.
     annotated_image = Image.fromarray(annotated_frame)
 
     output_buffer = io.BytesIO()
@@ -608,12 +705,11 @@ def omniparser_process(state: ApplicationState, encoded_bytes=None, full_page_wi
         output_buffer.getvalue()
     ).decode("utf-8")
 
-    # STEP 9: Return full-image dimensions.
+    # STEP 10: Return full-image dimensions.
     full_page_width = image_width
     full_page_height = image_height
 
     return annotated_encoded_bytes, all_boxes_details, full_page_width, full_page_height
-
 
 def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
     coordinates = []
@@ -652,11 +748,9 @@ def boxes_only_process(encoded_bytes: str, boxes_details: list[dict]):
 def decide_page(state: ApplicationState):
     page = state["current_page"]["page"]
     context = state["context"]
-    print(f"context: {context}")
-    print(f"context pages: {context.pages}")
     # encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
-    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
-    # encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
+    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state, viewport=True)
+    encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
@@ -698,6 +792,7 @@ def decide_page(state: ApplicationState):
     IF ${state["token_usage"]["total_cost"]} > $0.10, choose exit!!!
     If cookies are present always choose the cookies option.
     """
+    start_time = time.perf_counter()
     response = decide_page_llm.invoke([
         {
             "role": "user",
@@ -712,6 +807,9 @@ def decide_page(state: ApplicationState):
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
+    print(f"Decide page time: {time.perf_counter() - start_time} seconds")
     print(f"decide page: {response}")
     details = response["raw"]
     print(f"details: {details}")
@@ -904,6 +1002,8 @@ icon: None
                 {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
                 ]}])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = ai_response["raw"]
     new_tokens, model_name = details_process(details=details)
     print(f"new tokens: {new_tokens}")
@@ -954,7 +1054,7 @@ def cookies_action(icon: int, boxes_details: json, full_page_width: int, full_pa
 def apply_process(state: ApplicationState):
     print(f"Apply process checkpoint 1")
     page = state["current_page"]["page"]
-    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state)
+    encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state, viewport=True)
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
     body_text = page.locator("body") or ""
     page_elements = []
@@ -1042,6 +1142,8 @@ icon: None
                 {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
                 ]}])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     decision = response["parsed"]
     new_tokens, model_name = details_process(details=details)
@@ -1110,12 +1212,12 @@ def answser_question_process(state: ApplicationState):
     previous_answers = []
 
     for attempt in range(5):
-        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state, viewport=True)
         encoded_bytes2, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
         decoded_bytes2 = base64.b64decode(encoded_bytes2.encode("utf-8"))
         buffer = io.BytesIO(decoded_bytes2)
         image = Image.open(buffer)
-        # image.show()
+        image.show()
         page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -1251,7 +1353,8 @@ Cover Letter:
 
 If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
 """
-
+        
+        start_time = time.perf_counter()
         response = question_process_llm2.invoke([
             {
                 "role": "user",
@@ -1262,6 +1365,10 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                 ]
             }
         ])
+        state["total_ai_calls"] += 1
+        print(f"total ai calls: {state['total_ai_calls']}")
+        state["total_ai_calls"] += 1
+        print(f"Answer question time: {time.perf_counter() - start_time} seconds")
         details = response["raw"]
         print(f"details: {details}")
         new_tokens, model_name = details_process(details=details)
@@ -1341,8 +1448,6 @@ Ex 1:
 Page Elements Format:
 [icon, coordinates, content]
 
-Page Elements: {page_elements}
-
 Sometimes all we need to do is click one icon to help complete the form
 
 {{decision: same_form, action: click, icon: 12, reason: your reason}}
@@ -1365,6 +1470,8 @@ Ex 4:
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     print(f"new tokens: {new_tokens}")
@@ -1457,6 +1564,8 @@ icon: 48
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     print(f"new tokens: {new_tokens}")
@@ -1465,10 +1574,10 @@ icon: 48
     if total_cost > 0.10:
         state["action"] = "exit"
         state["leaving_reason"] = f"The cost extended above $0.10 at the find icon page process with the total being ${total_cost}"
-    decision = response["parsed"]
-    icon = decision.get("icon")
-    print(f"find icon: {icon}")
-    if not icon:
+    answer = response["parsed"]
+    print(f"find icon answer: {answer}")
+    icon = answer.get("icon")
+    if icon is None:
         return None, None, None, state
     current_box = boxes_details[icon]
     coordinates = current_box["bbox"]
@@ -1509,7 +1618,9 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         time.sleep(0.01)
         page.keyboard.type(action_text)
         time.sleep(0.01)
-        white_x, white_y = empty_pixel_process(state=state)
+        white_x, white_y = None, None
+        if process is None:
+            white_x, white_y = empty_pixel_process(state=state)
         if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
             page.mouse.click(white_x, white_y)
     elif action == "delete":
@@ -1544,7 +1655,9 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         page.keyboard.press("Enter")
 
         time.sleep(0.01)
-        white_x, white_y = empty_pixel_process(state=state)
+        white_x, white_y = None, None
+        if process is None:
+            white_x, white_y = empty_pixel_process(state=state)
         if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
             page.mouse.click(white_x, white_y)
             time.sleep(0.1)
@@ -1552,39 +1665,6 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
             if new_page_count > page_count:
                 all_pages = context.pages
                 all_pages[-1].close()
-    elif action == "white_pixel":
-        page_x, page_y = empty_pixel_process(state=state)
-        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
-            page.mouse.click(white_x, white_y)
-        pyautogui.moveTo(0, 0)
-    elif action == "extra_steps":
-        current_question = current_answer[2] if len(current_answer ) > 2 else None
-        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
-        if current_height != full_page_height:
-            print("used find icon for time")
-            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
-        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
-        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
-        page.mouse.click(page_x, page_y)
-        new_page_count = len(context.pages)
-        if new_page_count > page_count:
-            all_pages = context.pages
-            all_pages[-1].close()
-        pyautogui.hotkey("down")
-        pyautogui.hotkey("down")
-        state = extra_steps_process(current_answer=current_answer, old_encoded_bytes=encoded_bytes, old_boxes_details=boxes_details, old_page_width=full_page_width, old_page_height=full_page_height, page_x=page_x, page_y=page_y, cut_off_height=page_y, state=state)
-    elif action == "time":
-        current_question = current_answer[2] if len(current_answer ) > 2 else None
-        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
-        if current_height != full_page_height:
-            print("used find icon for time")
-            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
-        page.mouse.click(page_x, page_y)
-        new_page_count = len(context.pages)
-        if new_page_count > page_count:
-            all_pages = context.pages
-            all_pages[-1].close()
-        state = time_process(current_question=current_question, full_page_width=current_height, page_x=page_x, page_y=page_y, state=state)
     elif action == "click":
         page.mouse.click(page_x, page_y)
         time.sleep(0.1)
@@ -1592,7 +1672,9 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         if new_page_count > page_count:
             all_pages = context.pages
             all_pages[-1].close()
-        white_x, white_y = empty_pixel_process(state=state)
+        white_x, white_y = None, None
+        if process is None:
+            white_x, white_y = empty_pixel_process(state=state)
         if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
             page.mouse.click(white_x, white_y)
             time.sleep(0.1)
@@ -1605,18 +1687,64 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
         desired_option = current_answer[2]
         option_difference = desired_option - current_option
         if option_difference == 0:
+            time.sleep(0.5)
             pyautogui.hotkey("enter")
 
         elif option_difference > 0:
             for i in range(option_difference):
                 pyautogui.hotkey("down")
-            time.sleep(0.1)
+                time.sleep(0.1)
+            time.sleep(0.5)
             pyautogui.hotkey("enter")
         else:
             for i in range(abs(option_difference)):
                 pyautogui.hotkey("up")
-            time.sleep(0.1)
+                time.sleep(0.1)
+            time.sleep(0.5)
             pyautogui.hotkey("enter")
+    elif action == "white_pixel":
+        white_x, white_y = empty_pixel_process(state=state)
+        if (white_x is not None and white_y is not None and math.isfinite(white_x) and math.isfinite(white_y)):
+            page.mouse.click(white_x, white_y)
+        pyautogui.moveTo(0, 0)
+    elif action == "extra_steps":
+        current_question = current_answer[2] if len(current_answer ) > 2 else None
+        old_encoded_bytes, old_page_width, old_page_height = screenshot_process(state=state)
+        do_not_use_bytes, old_boxes_details, do_not_use1, do_not_use2 = omniparser_process(encoded_bytes=old_encoded_bytes, state=state)
+        if old_page_height != full_page_height:
+            print("used find icon for time")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        page.mouse.click(page_x, page_y)
+        time.sleep(1)
+        pyautogui.hotkey("down")
+        time.sleep(0.1)
+        pyautogui.hotkey("down")
+        active_element = get_active_element(state=state)
+        print(f"active element: {active_element}")
+        encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+        screenshot_active_element = get_active_element(state=state)
+        print(f"screenshot active element: {screenshot_active_element}")
+        if active_element != screenshot_active_element:
+            print("Active element changed after clicking the extra steps icon.")
+        else:
+            print("Active element did not change after clicking the extra steps icon.")
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        state = extra_steps_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_width=old_page_width, old_page_height=old_page_height, page_x=page_x, page_y=page_y, cut_off_height=page_y, state=state)
+    elif action == "time":
+        current_question = current_answer[2] if len(current_answer ) > 2 else None
+        current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
+        if current_height != full_page_height:
+            print("used find icon for time")
+            encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
+        page.mouse.click(page_x, page_y)
+        new_page_count = len(context.pages)
+        if new_page_count > page_count:
+            all_pages = context.pages
+            all_pages[-1].close()
+        state = time_process(current_question=current_question, full_page_width=current_height, page_x=page_x, page_y=page_y, state=state)
     elif action == "exit":
         page.mouse.click(page_x, page_y)
         new_page_count = len(context.pages)
@@ -2143,79 +2271,182 @@ def compare_pixel(encoded_bytes1: str, encoded_bytes2: str):
     return bool(np.array_equal(image1_array, image2_array))
 
 
-def expand_image(encoded_bytes: str):
+def expand_image(encoded_bytes: str, state: ApplicationState):
+    # STEP 1: Decode and preserve the original image.
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-    buffer = io.BytesIO(decoded_bytes)
-    image = Image.open(buffer)
+    original_image = Image.open(io.BytesIO(decoded_bytes)).convert("RGB")
 
-    width, height = image.size
+    width, height = original_image.size
+
     left_padding = 0
     top_padding = 0
-    expanded_width = width
-    expanded_height = height
 
+    expanded_width = max(3500, width)
+    expanded_height = max(100, height)
+
+    # STEP 2: Expand the image if necessary.
     if width < 3500 or height < 100:
-        background_color = image.getpixel((0, height // 2))
+        background_color = original_image.getpixel((0, height // 2))
 
-        padding = max(0, 3500 - width)
-        left_padding = padding // 2
-        expanded_width = max(3500, width)
+        left_padding = (expanded_width - width) // 2
+        top_padding = (expanded_height - height) // 2
 
-        height_padding = max(0, 100 - height)
-        top_padding = height_padding // 2
-        expanded_height = max(100, height)
-
-        expanded = Image.new(
+        expanded_image = Image.new(
             "RGB",
             (expanded_width, expanded_height),
             background_color
         )
 
-        expanded.paste(image, (left_padding, top_padding))
-
-        buffer = BytesIO()
-        expanded.save(buffer, format="PNG")
-
-        encoded_bytes = base64.b64encode(buffer.getvalue()).decode("utf-8")
-
-
-    data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-
-    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
-    response_data = response.json()
-
-    encoded_bytes = response_data["encoded_bytes"]
-    boxes_details = response_data["boxes_details"]
-
-    # Remove padding from the processed image
-    if left_padding > 0 or top_padding > 0:
-        processed_image = Image.open(
-            BytesIO(base64.b64decode(encoded_bytes))
+        expanded_image.paste(
+            original_image,
+            (left_padding, top_padding)
         )
 
-        processed_image = processed_image.crop((
-            left_padding,
-            top_padding,
-            left_padding + width,
-            top_padding + height
-        ))
+        buffer = io.BytesIO()
+        expanded_image.save(buffer, format="PNG")
 
-        buffer = BytesIO()
-        processed_image.save(buffer, format="PNG")
+        processing_encoded_bytes = base64.b64encode(
+            buffer.getvalue()
+        ).decode("utf-8")
 
-        encoded_bytes = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    else:
+        processing_encoded_bytes = encoded_bytes
 
-        # Restore normalized bounding box coordinates
-        for box in boxes_details:
-            if "bbox" in box:
-                bbox = box["bbox"]
+    # STEP 3: Send the expanded image to OmniParser.
+    data = {
+        "image_input": processing_encoded_bytes,
+        "box_threshold": 0.05,
+        "iou_threshold": 0.10,
+        "use_paddleocr": True,
+        "imgsz": 640
+    }
 
-                bbox[0] = (bbox[0] * expanded_width - left_padding) / width
-                bbox[2] = (bbox[2] * expanded_width - left_padding) / width
-                bbox[1] = (bbox[1] * expanded_height - top_padding) / height
-                bbox[3] = (bbox[3] * expanded_height - top_padding) / height
+    response = requests.post(
+        "http://127.0.0.1:8000/image_process",
+        json=data,
+        timeout=180
+    )
 
-    return encoded_bytes, boxes_details
+    state["total_omniparser_calls"] += 1
+
+    print(
+        f"total omniparser calls: "
+        f"{state['total_omniparser_calls']}"
+    )
+
+    response.raise_for_status()
+
+    response_data = response.json()
+    boxes_details = response_data["boxes_details"]
+
+    # STEP 4: Restore bounding boxes to original image coordinates.
+    restored_boxes_details = []
+
+    for box in boxes_details:
+        box = box.copy()
+
+        if "bbox" not in box:
+            continue
+
+        x1, y1, x2, y2 = box["bbox"]
+
+        # Convert normalized expanded-image coordinates
+        # back to normalized original-image coordinates.
+        x1 = (x1 * expanded_width - left_padding) / width
+        y1 = (y1 * expanded_height - top_padding) / height
+        x2 = (x2 * expanded_width - left_padding) / width
+        y2 = (y2 * expanded_height - top_padding) / height
+
+        # Clip coordinates to original image boundaries.
+        x1 = max(0.0, min(1.0, x1))
+        y1 = max(0.0, min(1.0, y1))
+        x2 = max(0.0, min(1.0, x2))
+        y2 = max(0.0, min(1.0, y2))
+
+        # Skip boxes entirely outside the original image.
+        if x2 <= x1 or y2 <= y1:
+            continue
+
+        box["bbox"] = [x1, y1, x2, y2]
+
+        # Remove any old ID field.
+        box.pop("id", None)
+
+        restored_boxes_details.append(box)
+
+    # STEP 5: Sort all elements globally by Y, then X.
+    restored_boxes_details.sort(
+        key=lambda box: (
+            box["bbox"][1],
+            box["bbox"][0]
+        )
+    )
+
+    # STEP 6: Renumber the actual icon field sequentially.
+    for index, box in enumerate(restored_boxes_details):
+        box["icon"] = index
+
+    # STEP 7: Verify sequential icon numbering.
+    icons = [
+        box["icon"]
+        for box in restored_boxes_details
+    ]
+
+    assert icons == list(range(len(restored_boxes_details))), (
+        "OmniParser icon numbering is not sequential."
+    )
+
+    # STEP 8: Prepare bounding boxes and labels.
+    xyxy = []
+    labels = []
+
+    for box in restored_boxes_details:
+        x1, y1, x2, y2 = box["bbox"]
+
+        xyxy.append([
+            x1 * width,
+            y1 * height,
+            x2 * width,
+            y2 * height
+        ])
+
+        labels.append(str(box["icon"]))
+
+    # STEP 9: Draw bounding boxes on the ORIGINAL image.
+    annotated_frame = np.asarray(original_image).copy()
+
+    if xyxy:
+        detections = sv.Detections(
+            xyxy=np.asarray(xyxy, dtype=np.float32)
+        )
+
+        box_annotator = BoxAnnotator(
+            text_scale=0.2,
+            text_padding=2,
+            text_thickness=2,
+            thickness=1,
+            avoid_overlap=True
+        )
+
+        annotated_frame = box_annotator.annotate(
+            scene=annotated_frame,
+            detections=detections,
+            labels=labels,
+            image_size=(width, height)
+        )
+
+    # STEP 10: Encode the annotated original image.
+    annotated_image = Image.fromarray(annotated_frame)
+
+    output_buffer = io.BytesIO()
+    annotated_image.save(output_buffer, format="PNG")
+
+    annotated_encoded_bytes = base64.b64encode(
+        output_buffer.getvalue()
+    ).decode("utf-8")
+
+    # STEP 11: Return the annotated image and restored boxes.
+    return annotated_encoded_bytes, restored_boxes_details
 
 
 
@@ -2408,7 +2639,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
-
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
 
@@ -2535,7 +2767,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
-
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
 
@@ -2805,7 +3038,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
-
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -2969,7 +3203,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
-
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -3142,7 +3377,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
-
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -3295,6 +3531,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
         }
     ])
     details = response["raw"]
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
     answer = response["parsed"]
@@ -3404,6 +3642,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -3816,6 +4056,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -4060,6 +4302,9 @@ If the image does have some exit button to leave the current question then retur
         }
     ])
 
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
+
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
 
@@ -4191,13 +4436,19 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
 
         if complete:
             return state
+    active_element_extra = get_active_element(state=state)
+    print(f"active element extra: {active_element_extra}")
+    print("------------------------------------------------------------------------------------------------------------")
+    time.sleep(5)
     pyautogui_image = pyautogui.screenshot(region=(10, 40, old_page_width, 910))
     buffer = io.BytesIO()
     pyautogui_image.save(buffer, format="PNG")
     pyautogui_bytes = buffer.getvalue()
     encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    state["total_omniparser_calls"] += 1
+    print(f"total omniparser calls: {state['total_omniparser_calls']}")
     data = response.json()
     pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
@@ -4208,7 +4459,10 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
     page_x, page_y = coordinates_process(coordinates=bbox, full_page_width=full_page_width, full_page_height=full_page_height)
     encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
     current_height = page.evaluate("""() => { return Math.max( document.body.scrollHeight, document.documentElement.scrollHeight, document.body.offsetHeight, document.documentElement.offsetHeight, document.body.clientHeight, document.documentElement.clientHeight); }""")
-    if current_height == old_page_height:
+    screenshot = page.screenshot()
+    buffer = io.BytesIO(screenshot)
+    image = Image.open(buffer)
+    if current_height != old_page_height:
         print("used pixel image cropping in extra steps")
         encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
     else:
@@ -4219,7 +4473,7 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    # image.show()
+    image.show()
     comparison_page_width2, comparison_page_height2 = image.size
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
     page_elements = []
@@ -4230,14 +4484,13 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
         coordinates = [round(bbox[0], 0), round(bbox[1], 0), round(bbox[2], 0), round(bbox[3], 0)]
         content = current_box["content"]
         page_elements.append([icon, coordinates, content])
+    body_text = page.locator("body").inner_text() or ""
     prompt = f"""
 You're an AI Applicant in the Extra Step Process with only looking at the current question.
 
 You will only be looking at the current question during this process.
 
 Current Question + guidance to answering the question: {current_answer}
-
-
 
 PAGE ELEMENTS FORMAT
 [icon, coordinates, content]
@@ -4246,34 +4499,36 @@ Page Elements: {page_elements}
 
 For any icon clicking you will use the page elements from image1 to answer.
 
+Body Text: {body_text}
+
 You will Follow the Extra Steps Process to complete this question.
 
 Extra Steps Process
 
 1. First you need to determine what type of action we will be taking and the options you have are, dropdown, search, and time.
-    - dropdown: if you see options for the current question that means we are using the dropdown action.
+    - dropdown: if you see options/dropdown options for the current question that means we might be using dropdown unless we need to search for the answer else it is certainly a dropdown action.
     - Search: If there're no options available for the current question and this is not a time question that means we are using the search action.
     - Time: If you see for the current question that there is no options and it is a time question we will be using the time action.
 
 How to handle each action.
 
-How to Handle dropdown Action
-
+How to Handle dropdown Action:
 1. First look at the body text and the image and find all the options for the current question
 2. Determine if you can click the option you want to click look at the page elements in image 1. If you can stop and return something like this.
     - You need to find the right icon to click, then list the current_option (usually the highlighted option in the photo or it's just the first option/dropdown option), desired_option, total_options, current_text, and desired_text, determine if image1 has options, determine if image2 has options, and what is the exact current question.
     - Ex: {{action: dropdown, dropdown_type: click, icon: 19, current_option: 5, desired_option: 8, total_options: 10, current_text: maybe, desired_text: yes, image1: True, image2: False, current_question: What state are you from?}}
 3. If you can't click the icon that is available then you need to find the current_option that we are on in the image, then find the option number that we want to go to, return something like this.
     - You need to find the current_option (usually the highlighted option in the photo or it's just the first option/dropdown option), the desired_option, the total_options available, the first_text (the first option), and the desired_text, determine if image1 has options, determine if image2 has options, and what is the exact current question.
+    - To find all the current options you need to look at the body text.
     - Ex: {{action: dropdown, dropdown_type: arrow, current_option: 12, desired_option: 5, total_options: 24, current_text: Alabama, desired_text: example, image1: True, image2: True, current_question: What city are you from?}}
 
-How to Handle the search Action
-
+How to Handle the search Action:
 1. First look at the current question and the USER PROFILE and decide what is the best way to answer this, with the highest likelihood that a suggestion pops up for the answer.
 2. Some Search Action will need a list of answers and some will just need one individual answer. Your job is to look at the current question and the USER PROFILE to be able to determine if it is a single word type of response or is it multiple single word responses need to be inputed, you also need to find the exact current question.
 3. Also give us the icon that we will be clicking to input the answer, and the list of answers that we will be inputing.
-    - Ex 1: {{action: search, icon: 6, list_text: [college], current_question: What university did you attend?}}
-    - Ex 2: {{action: search, icon: 10, list_text: [skill 1, skill 2, skill 3], current_question: What skills do you have?}}
+4. The list_text should be one word text(s) that gives us the highest likelihood of finding the answer in a search process. It should be Carolina and not North Carolina (only wone word), [Carolina, Wyoming, Mexico].
+    - Ex 1: {{action: search, list_text: [college], current_question: What university did you attend?}}
+    - Ex 2: {{action: search, list_text: [skill 1, skill 2, skill 3], current_question: What skills do you have?}}
 
 How to Handle the time Action:
 If the Time has dropdown options, go back up to the dropdown subprocess and choose that.
@@ -4365,6 +4620,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -4396,6 +4653,10 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                 new_answer = ["arrow", current_option, desired_option]
                 page_count = len(state.get("context").pages)
                 state = execute_action(current_answer=new_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+                screenshot = page.screenshot()
+                buffer = io.BytesIO(screenshot)
+                image = Image.open(buffer)
+                image.show()
         if action_type == "click":
             context = state.get("context")
             page_count = len(context.pages)
@@ -4409,10 +4670,22 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, full_page_height1=full_page_height, full_page_height2=new_page_height, desired_bbox=current_bbox)
             current_box["bbox"] = desired_box
             middle_x, middle_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
-            state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+            state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, process=True, state=state)
         print("going to dropdown process")
         state = dropdown_process(current_answer=current_answer, previous_action=action_type, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, page_x=page_x, page_y=page_y, first_text=first_text, desired_text=desired_text, desired_option=desired_option, total_options=total_options, image1=image1, image2=image2, state=state)
     elif action == "search":
+        if full_page_height == old_page_height:
+            page.mouse.click(page_x, page_y)
+        else:
+            print("used find icon in extra steps")
+            encoded_bytes, new_x, new_y,state = find_icon(current_answer=current_answer, state=state)
+            if (new_x is not None and new_y is not None):
+                page_x = new_x
+                page_y = new_y
+                page.mouse.click(page_x, page_y)
+            else:
+                page.mouse.click(page_x, page_y)
+            
         context = state.get("context")
         page_count = len(context.pages)
         new_answer = ["click", icon]
@@ -4425,7 +4698,7 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
         desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, full_page_height1=full_page_height, full_page_height2=new_page_height, desired_bbox=current_bbox)
         current_box["bbox"] = desired_box
         page_x, page_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
-        state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+        state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, process=True, state=state)
         state = search_process(current_answer=current_answer, list_text=list_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, old_x=page_x, old_y=page_y, state=state)
     elif action == "time":
         state = time_process(current_answer=current_answer, desired_date=desired_date, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, full_page_width=full_page_width, page_x=page_x, page_y=page_y, image1=image1, image2=image2, state=state)
@@ -4567,7 +4840,8 @@ Example Output 2:
             ]
         }
     ])
-
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(
@@ -4971,6 +5245,8 @@ The icon that I picked was the box/text input for the current question.
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -5000,12 +5276,13 @@ def review_find_time_process(current_question: str, full_page_width: int, page_x
     pyautogui_bytes = buffer.getvalue()
     encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    state["total_omniparser_calls"] += 1
+    print(f"total omniparser calls: {state['total_omniparser_calls']}")
     data = response.json()
     pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
     pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=boxes_details)
-
     encoded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
 
@@ -5083,6 +5360,8 @@ Always choose action click for action in this type of output.
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -5114,7 +5393,9 @@ def text_time_process(current_question: str, full_page_width: int, state: Applic
     pyautogui_bytes = buffer.getvalue()
     encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+    response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+    state["total_omniparser_calls"] += 1
+    print(f"total omniparser calls: {state['total_omniparser_calls']}")
     data = response.json()
     pyautogui_encoded_bytes = data["encoded_bytes"]
     boxes_details = data["boxes_details"]
@@ -5338,6 +5619,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -5447,6 +5730,8 @@ There is no text inputted and both images show a calendar popup.
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -5498,7 +5783,9 @@ def calendar_time_process(current_answer: list, desired_date: str, image1: bool,
         pyautogui_bytes = buffer.getvalue()
         encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
         data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        state["total_omniparser_calls"] += 1
+        print(f"total omniparser calls: {state['total_omniparser_calls']}")
         data = response.json()
         pyautogui_encoded_bytes = data["encoded_bytes"]
         boxes_details = data["boxes_details"]
@@ -5653,6 +5940,8 @@ We are clicking the icon within image 2 page elements.
                 ]
             }
         ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -5938,7 +6227,8 @@ Why we did that: There is currently no highlighted option in the photo and we ne
                 ]
             }
         ])
-
+        state["total_ai_calls"] += 1
+        print(f"total ai calls: {state['total_ai_calls']}")
         details = response["raw"]
         print(f"AI Details: {details}")
         new_tokens, model_name = details_process(details=details)
@@ -6037,13 +6327,15 @@ def markdown_process(current_answer: list, ai_answers: list[list], markdown_type
         pyautogui_bytes = buffer.getvalue()
         pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
         data = {"image_input": pyautogui_encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        state["total_omniparser_calls"] += 1
+        print(f"total omniparser calls: {state['total_omniparser_calls']}")
         response = response.json()
         pyautogui_encoded_bytes = response["encoded_bytes"]
         pyautogui_boxes_details = response["boxes_details"]
         pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=pyautogui_boxes_details)
 
-        body_text = page.locator("body").inner_text()
+        body_text = page.locator("body").inner_text() or ""
         page_elements = []
 
         text_elements = ""
@@ -6235,8 +6527,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                 }
             ])
             details = response["raw"]
-            
-
+            state["total_ai_calls"] += 1
+            print(f"total ai calls: {state['total_ai_calls']}")
             new_tokens, model_name = details_process(details=details)
             state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
             answers = response["parsed"]
@@ -6279,27 +6571,6 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     needs_scroll = False
     previous_answers = []
     for i in range(6):
-        body_text = page.locator("body").inner_text() or None
-        encoded_bytes, full_page_width1, full_page_height1 = screenshot_process(state=state)
-        do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
-        if full_page_height == old_page_height:
-            print("used pixel image cropping in dropdown")
-            encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
-        else:
-            print("used cropped image process in dropdown")
-            encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width, old_page_height=old_page_height, state=state)
-        
-        if min_cut_off_height is None or max_cut_off_height is None:
-            print("min cut off height is None")
-            min_cut_off_height = 0
-            max_cut_off_height = 0
-
-        encoded_bytes, boxes_details, do_not_use, do_not_use2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
-        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
-        buffer1 = io.BytesIO(decoded_bytes)
-        image1 = Image.open(buffer1)
-        # image1.show()
-        full_page_width2, full_page_height2 = image1.size
         if not image1:
             pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
             buffer = io.BytesIO()
@@ -6307,11 +6578,33 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
             pyautogui_bytes = buffer.getvalue()
             pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
             data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-            response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+            response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+            state["total_omniparser_calls"] += 1
+            print(f"total omniparser calls: {state['total_omniparser_calls']}")
             data = response.json()
             pyautogui_encoded_bytes = data["encoded_bytes"]
             pyautogui_boxes_details = data["boxes_details"]
             pyautogui_encoded_bytes = boxes_only_process(encoded_bytes=pyautogui_encoded_bytes, boxes_details=pyautogui_boxes_details)
+        body_text = page.locator("body").inner_text() or ""
+        encoded_bytes, full_page_width1, full_page_height1 = screenshot_process(state=state)
+        if full_page_height1 == old_page_height:
+            print("used pixel image cropping in dropdown")
+            encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
+        else:
+            print("used cropped image process in dropdown")
+            do_not_use_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(state=state)
+            encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, cut_off_height=cut_off_height, full_page_width=full_page_width1, old_page_height=old_page_height, state=state)
+        
+        if min_cut_off_height is None or max_cut_off_height is None:
+            print("min cut off height is None")
+            min_cut_off_height = 0
+            max_cut_off_height = 0
+
+        encoded_bytes, boxes_details, full_page_width2, full_page_height2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
+        decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
+        buffer1 = io.BytesIO(decoded_bytes)
+        image1 = Image.open(buffer1)
+        image1.show()
         page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -6450,14 +6743,20 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     - Ex: {{action: “click”, icon: 8, complete: True, reason: whatever your reason}}
 
     2. If the previous action was arrow follow this subprocess.
-    - If there are no options on the screen or we chose the first option in {first_text}. Find the icon to click that reopens the current question and return something like this.
-    - Choose this option if we clicked {first_text} or there are no options on the screen.
-    - If there are options still shown on the screen and you see the first option: {first_text} in the image that means we need to use the scroll process.
-    - Ex: {{action: "click", icon: 28, arrow_status: False, reason: : Looking at the current question, we chose the first text and the icon is closed that needs to reopened.(your reason helps future answers)}}
-    - If there are options still shown on the screen and you see the first option: {first_text} in the image that means we need to use the scroll process.
-    - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, if move down is True that means we are moving downwards to find our option, if move down is False we are moving up to Find our option, return something like this.
-    - Ex: {{action: scroll, current_option: 2, desired_option: 8, total_options: 20, current_text: option 2, desired_text: option 8, arrow_status: False, move_down: True, reason: The question is not answered and there is no options for the current question on the screen and the correct option is downwards. (your reason helps future answers)}}
-    - Your reasoning for choosing scroll should only be if the first text is shown or there is no options listed with no answer. That means if there is an answer to the question do not choose scroll.
+    - If we do not see the first option in {first_text} in the current question that means the arrow process worked.
+    - If the first text is not shown then follow this subprocess:
+        - If there are no options/dropdown options then we need to find the icon that reopens the current question and return something like this.
+        - Ex: {{action: click, icon: 28, arrow_status: True, reason We did not choose the first option in {first_text} and there are no options on the screen. (your reason helps future answers)}}
+        - Ex: {{action: arrow, current_option: 80, desired_option: 100, total_options: 105, desired_text: option 4, arrow_status: True, reason We did not choose the first option in {first_text} and there are options on the screen. (your reason helps future answers)}}
+    - If the first text is shown then follow this subprocess:
+        - If there are no options on the screen or we chose the first option in {first_text}. Find the icon to click that reopens the current question and return something like this.
+        - Choose this option if we clicked {first_text} or there are no options on the screen.
+        - If there are options still shown on the screen and you see the first option: {first_text} in the image that means we need to use the scroll process.
+        - Ex: {{action: "click", icon: 28, arrow_status: False, reason: : Looking at the current question, we chose the first text and the icon is closed that needs to reopened.(your reason helps future answers)}}
+        - If there are options still shown on the screen and you see the first option: {first_text} in the image that means we need to use the scroll process.
+        - Scroll process needs you to find the current_option (usually the option that is highlighted in the image if not just choose the first option that is shown in the image for the current question), desired_option, total_options, and desired_text, if move down is True that means we are moving downwards to find our option, if move down is False we are moving up to Find our option, return something like this.
+        - Ex: {{action: scroll, current_option: 2, desired_option: 8, total_options: 20, current_text: option 2, desired_text: option 8, arrow_status: False, move_down: True, reason: The question is not answered and there is no options for the current question on the screen and the correct option is downwards. (your reason helps future answers)}}
+        - Your reasoning for choosing scroll should only be if the first text is shown or there is no options listed with no answer. That means if there is an answer to the question do not choose scroll.
 
     3. You need to look at the current question, image, body text, and page elements, and the USER PROFILE to correctly answer the question.
     - If the desired option is on the screen then click it and return something like this.
@@ -6636,7 +6935,8 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
                     ]
                 }
             ])
-        
+        state["total_ai_calls"] += 1
+        print(f"total ai calls: {state['total_ai_calls']}")
         details = response["raw"]
         new_tokens, model_name = details_process(details=details)
         state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -6666,7 +6966,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
                 arrow_permanent_status = False
                 arrow_temp_status = False
         previous_action = action
-        if complete:
+        if complete == True:
             if action == "click":
                 if icon is not None and icon <= len(boxes_details):
                     current_answer = [action, icon]
@@ -6675,7 +6975,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
                     current_box["bbox"] = desired_bbox
                     state = execute_action(current_answer=current_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
             else:
-                state = execute_action(current_answer=["white_pixel", -1], current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+                state = execute_action(current_answer=["white_pixel", -1], current_box=-1, full_page_width=full_page_width1, full_page_height=full_page_height1, page_count=page_count, state=state)
             return state
         elif action == "click":
             new_answer = [action, icon]
@@ -6684,19 +6984,19 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
                 desired_bbox = cropped_coordinates_process(full_page_height1=full_page_height1, full_page_height2=full_page_height2, min_cut_off_height=min_cut_off_height, desired_bbox=current_box["bbox"])
 
                 current_box["bbox"] = desired_bbox
-                state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+                state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width1, full_page_height=full_page_height1, page_count=page_count, process=True, state=state)
         elif action == "arrow":
             new_answer = [action, current_option, desired_option]
-            state = execute_action(current_answer=new_answer, current_box=-1, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+            state = execute_action(current_answer=new_answer, current_box=-1, full_page_width=full_page_width1, full_page_height=full_page_height1, page_count=page_count, state=state)
         elif action == "fill":
             if icon is not None and icon <= len(boxes_details):
                 new_answer = [action, icon, action_text]
                 current_box = boxes_details[icon]
                 desired_bbox = cropped_coordinates_process(full_page_height1=full_page_height1, full_page_height2=full_page_height2, min_cut_off_height=min_cut_off_height, desired_bbox=current_box["bbox"])
                 current_box["bbox"] = desired_bbox
-                state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, state=state)
+                state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width1, full_page_height=full_page_height1, page_count=page_count, process=True, state=state)
         elif action == "scroll":
-            state = scroll_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_x=page_x, old_y=page_y, old_page_width=full_page_width, old_page_height=old_page_height, cut_off_height=cut_off_height, desired_option=desired_option, total_options=total_options, first_text=current_text, desired_text=desired_text, move_down=move_down, state=state)
+            state = scroll_process(current_answer=current_answer, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_x=page_x, old_y=page_y, old_page_width=full_page_width1, old_page_height=old_page_height, cut_off_height=cut_off_height, desired_option=desired_option, total_options=total_options, first_text=current_text, desired_text=desired_text, move_down=move_down, state=state)
     return state
 
 def review_markdown_process(current_question: str, ai_answers: list[list], state: ApplicationState):
@@ -6898,6 +7198,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -7007,6 +7309,8 @@ complete: True
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -7058,7 +7362,9 @@ def search_process( current_answer: str, list_text: list[str], state: Applicatio
         pyautogui_bytes = buffer.getvalue()
         pyautogui_encoded_bytes = base64.b64encode(pyautogui_bytes).decode("utf-8")
         data = {"image_input": pyautogui_encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-        response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+        response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+        state["total_omniparser_calls"] += 1
+        print(f"total omniparser calls: {state['total_omniparser_calls']}")
         response = response.json()
         pyautogui_encoded_bytes = response["encoded_bytes"]
         pyautogui_boxes_details = response["boxes_details"]
@@ -7176,6 +7482,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                     ]
                 }
             ])
+            state["total_ai_calls"] += 1
+            print(f"total ai calls: {state['total_ai_calls']}")
             details = response["raw"]
             new_tokens, model_name = details_process(details=details)
             state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -7487,7 +7795,8 @@ IMPORTANT:
                 ]
             }
         ])
-
+        state["total_ai_calls"] += 1
+        print(f"total ai calls: {state['total_ai_calls']}")
         details = response["raw"]
         new_tokens, model_name = details_process(details=details)
         state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -7850,6 +8159,9 @@ Job source: prefer Other, Job Board, Website, or closest equivalent.
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -7959,6 +8271,8 @@ Job source: prefer Other, Job Board, Website, or closest equivalent.
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -8060,6 +8374,9 @@ complete: True
             ]
         }
     ])
+    state["total_ai_calls"] += 1
+    print(f"total ai calls: {state['total_ai_calls']}")
+    print(f"total ai calls: {state['total_ai_calls']}")
     details = response["raw"]
     new_tokens, model_name = details_process(details=details)
     state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
@@ -8256,7 +8573,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
                 }
             ]
         )
-
+        state["total_ai_calls"] += 1
+        print(f"total ai calls: {state['total_ai_calls']}")
         details = response["raw"]
         print(f"Click and view details: {details}")
 
@@ -8377,7 +8695,7 @@ Thank you for your consideration.
     screenshot = page.screenshot()
     encoded_bytes = base64.b64encode(screenshot).decode("utf-8")
     data = {"image_input": encoded_bytes, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-    response = requests.post("http://127.0.0.1:8001/image_process",json=data)
+    response = requests.post("http://127.0.0.1:8000/image_process",json=data)
     response_data = response.json()
     encoded_bytes = response_data["encoded_bytes"]
     decoded_new_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
@@ -8440,66 +8758,17 @@ def complete_application(url2: str):
         user_id = "76f6e1cd-85de-46f7-b4c7-074284b3a1cc"
         time.sleep(5)
         pyautogui.moveTo(0, 0)
-        final_state = mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage, "browser": browser, "context": context, "user_id": user_id, "wait_tracker": 0})
+        final_state = mapping.invoke({"url": url2, "current_page": current_page, "token_usage": token_usage, "browser": browser, "context": context, "user_id": user_id, "wait_tracker": 0, "total_ai_calls": 0, "total_omniparser_calls": 0})
         print(f"final_state: {final_state}")
         leaving_reason = final_state.get("leaving_reason")
         print(f"Browser closing due to : {leaving_reason}")
         browser.close()
 
+the_start_time = time.perf_counter()
 
 complete_application(url)
-from rapidocr import RapidOCR
 
-# Initialize the engine (defaults to ONNX Runtime)
-engine = RapidOCR()
-import numpy as np
-from PIL import Image
-
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-
-import numpy as np
-from PIL import Image, ImageDraw
-
-def test_rapidocr(image_path):
-    image = Image.open(image_path).convert("RGB")
-    image_array = np.asarray(image)
-    image_width, image_height = image.size
-
-    result = engine(image_array)
-
-    if result.boxes is None or result.txts is None:
-        print("No text detected.")
-        image.show()
-        return []
-
-    detected_boxes = []
-    draw = ImageDraw.Draw(image)
-
-    for bbox, text, confidence in zip(result.boxes, result.txts, result.scores):
-        x1 = int(np.min(bbox[:, 0]))
-        y1 = int(np.min(bbox[:, 1]))
-        x2 = int(np.max(bbox[:, 0]))
-        y2 = int(np.max(bbox[:, 1]))
-
-        draw.rectangle((x1, y1, x2, y2), outline="green", width=2)
-
-        normalized_bbox = [
-            x1 / image_width,
-            y1 / image_height,
-            x2 / image_width,
-            y2 / image_height
-        ]
-
-        detected_boxes.append({
-            "type": "text",
-            "bbox": normalized_bbox,
-            "content": text
-        })
-
-    image.show()
-
-    return detected_boxes
+print(f"Time to complete application: {time.perf_counter() - the_start_time} seconds")
 
 """results = test_rapidocr("/Users/peytonrivers/Desktop/small5.png")
 print(f"results: {results}")"""
@@ -8511,7 +8780,9 @@ image.save(buffer, format="PNG")
 decoded_bytes = buffer.getvalue()
 encoded_bytes1 = base64.b64encode(decoded_bytes).decode("utf-8")
 data = {"image_input": encoded_bytes1, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+state["total_omniparser_calls"] += 1
+print(f"total omniparser calls: {state['total_omniparser_calls']}")
 response = response.json()
 boxes_details1 = response["boxes_details"]
 
@@ -8522,7 +8793,9 @@ image.save(buffer, format="PNG")
 decoded_bytes = buffer.getvalue()
 encoded_bytes2 = base64.b64encode(decoded_bytes).decode("utf-8")
 data = {"image_input": encoded_bytes2, "box_threshold": 0.05, "iou_threshold": 0.10, "use_paddleocr": True, "imgsz": 640}
-response = requests.post("http://127.0.0.1:8001/image_process", json=data)
+response = requests.post("http://127.0.0.1:8000/image_process", json=data)
+state["total_omniparser_calls"] += 1
+print(f"total omniparser calls: {state['total_omniparser_calls']}")
 response = response.json()
 boxes_details2 = response["boxes_details"]
 
