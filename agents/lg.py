@@ -23,7 +23,7 @@ import json
 import time
 import base64
 from datetime import datetime
-from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, FindTimeProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess, ReviewFindTimeProcess, ExtraStepsProcess, SetupSelectProcess, QuickSelectProcess, ReviewQuickProcess, QuickTimeProcess, DropdownProcess, QuickSearchProcess
+from agents.state import ApplicationState, MiddlePageDecision, ClickAction, MultipleQuestionItem, MultipleQuestionGrouping, MultipleQuestion, AllElementsItem, AllElementsGrouping, AllElements, CurrentPage, CookiesProcess, DecidePage, ApplyProcess, SignupProcess, FormsAction, PageAction, PageDecision, NewCookiesProcess, AITokens, QuestionProcess, AnswerItem, MarkdownProcess, ReviewMarkdownProcess, CompleteMarkdownProcess, ReviewClickAndViewProcess, FindIcon, ReviewQuestionProcess, SearchProcess, ReviewSearchProcess, CompleteSearchProcess, FindTimeProcess, TextTimeProcess, ReviewTimeProcess, CalendarTimeProcess, ReviewFindTimeProcess, ExtraStepsProcess, SetupSelectProcess, QuickSelectProcess, ReviewQuickProcess, QuickTimeProcess, DropdownProcess, QuickSearchProcess, QuickSearchOptions, CheckUsedEnter
 import io
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
@@ -94,6 +94,8 @@ quick_time_process_llm2 = llm2.with_structured_output(QuickTimeProcess, include_
 review_quick_process_llm2 = llm2.with_structured_output(ReviewQuickProcess, include_raw=True)
 dropdown_process_llm2 = llm2.with_structured_output(DropdownProcess, include_raw=True)
 quick_search_process_llm2 = llm2.with_structured_output(QuickSearchProcess, include_raw=True)
+quick_search_options_llm2 = llm2.with_structured_output(QuickSearchOptions, include_raw=True)
+check_used_enter_llm2 = llm2.with_structured_output(CheckUsedEnter, include_raw=True)
 
 
 url = "https://www.allstate.jobs/job/23890328/software-engineering-manager-java-/"
@@ -106,13 +108,13 @@ url = "https://jobs.intuit.com/job/-/-/27595/100620927520?cid=job_id_click_us_sw
 url = "https://talent.lowes.com/us/en/job/JR-02623542/Exploratory-Software-Engineering-Undergrad-Internship-Summer-2027?utm_source=617ZipRecruiterOrganic&cid=01a1f161-40bd-7568-9763-73aaeae1b8fd"
 url = "https://www.vanguardjobs.com/job/23948133/college-to-corporate-it-internship-application-development-nc-charlotte-nc/?utm_medium=%22mcloud-jobads%22&utm_campaign=Technology&utm_content=College%20to%20Corporate%20IT%20Internship-Application%20Development%20(NC)&utm_term=182781&source=Corporate_Website"
 url = "https://jobs.newellbrands.com/job/Huntersville-2027-Newell-Brands-Intern-Sales-AI-&-Analytics-Developer-Intern-Nort/1431281200/?utm_source=ZipRecruiter&utm_campaign=J2W_ZIP"
-url = "https://testing-kohl-psi.vercel.app/"
 url = "https://paypal.eightfold.ai/careers/job/274922982814?source=JobBoardIndeed-Organic"
 url = "https://jobs.lever.co/kobie/a6173028-d795-4841-b247-9fb0421b405e?source=remote.com&utm_source=chatgpt.com" #lever
 url = "https://job-boards.greenhouse.io/axs/jobs/8566918002?gh_src=xlqafhy22us&utm_source=Indeed&utm_medium=organic&utm_campaign=Indeed" #greenhouse
 # url = "https://jobs.ashbyhq.com/render/af5b6699-2e4a-47de-99f7-664baa738190/?utm_source=chatgpt.com" # ashby
 url = "https://jobs.smartrecruiters.com/WesternDigital/744000138717897?utm_source=chatgpt.com"
 url = "https://edel.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_2001/job/24670"
+url = "https://testing-kohl-psi.vercel.app/"
 
 print(url.title)
 model_ratios = [["gpt-5.4-nano", 0.20 / 1000000, 1.25 / 1000000, 0.02 / 1000000], ["gpt-5.6-luna", 0.20 / 1000000, 1.20 / 1000000, 0.02 / 1000000], ["gpt-6-luna", 0.10 / 1000000, 0.50 / 1000000, 0.01 / 1000000]]
@@ -1217,7 +1219,6 @@ def answser_question_process(state: ApplicationState):
         decoded_bytes2 = base64.b64decode(encoded_bytes2.encode("utf-8"))
         buffer = io.BytesIO(decoded_bytes2)
         image = Image.open(buffer)
-        image.show()
         page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -1409,7 +1410,7 @@ def review_answer_question_process(state: ApplicationState, all_text: list[str],
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    image.show()
+    # image.show()
     total_cost = state["token_usage"]["total_cost"]
     if total_cost >= 0.10:
         state["leaving_reason"] = "Total cost greater than $0.10"
@@ -1715,6 +1716,10 @@ def execute_action(current_answer: list, current_box: dict, full_page_width: int
             print("used find icon for time")
             encoded_bytes, page_x, page_y, state = find_icon(current_answer=current_answer, state=state)
         page.mouse.click(page_x, page_y)
+        for i in range(500):
+            page.keyboard.press("ArrowRight")
+        for i in range(500):
+            page.keyboard.press("Backspace")
         time.sleep(1)
         pyautogui.hotkey("down")
         time.sleep(0.1)
@@ -2281,11 +2286,11 @@ def expand_image(encoded_bytes: str, state: ApplicationState):
     left_padding = 0
     top_padding = 0
 
-    expanded_width = max(3500, width)
+    expanded_width = max(1500, width)
     expanded_height = max(100, height)
 
     # STEP 2: Expand the image if necessary.
-    if width < 3500 or height < 100:
+    if width < 1500 or height < 100:
         background_color = original_image.getpixel((0, height // 2))
 
         left_padding = (expanded_width - width) // 2
@@ -2513,6 +2518,8 @@ def check_search_options(old_encoded_bytes: str, old_boxes_details: list[dict], 
 
     if used_enter:
         replace_search_text(list_text[0])
+        time.sleep(0.1)
+        print("used enter inside check search options")
         page.keyboard.press("Enter")
     else:
         replace_search_text(list_text[0])
@@ -2521,6 +2528,361 @@ def check_search_options(old_encoded_bytes: str, old_boxes_details: list[dict], 
 
     return True, state
 
+def check_used_enter_search_options(
+    old_encoded_bytes: str,
+    old_boxes_details: list[dict],
+    old_page_height: int,
+    cut_off_height: int,
+    cropped_encoded_bytes: str,
+    cropped_boxes_details1: list[dict],
+    list_text: list[str],
+    state: ApplicationState
+):
+    page = state["current_page"]["page"]
+
+    if len(list_text) < 2:
+        return False, True, state
+
+    def combine_text(boxes_details, search_text=None):
+        reorganized_elements = sorted(
+            boxes_details,
+            key=lambda current_box: (
+                current_box["bbox"][0],
+                current_box["bbox"][1]
+            )
+        )
+
+        combined_text = ""
+
+        for current_box in reorganized_elements:
+            content = normalize_text(current_box["content"])
+
+            if not content:
+                continue
+
+            combined_text += content
+
+        if search_text:
+            search_text = normalize_text(search_text)
+            combined_text = combined_text.replace(search_text, "", 1)
+
+        return combined_text
+
+    def replace_search_text(text):
+        page.keyboard.press("ControlOrMeta+A")
+        page.keyboard.press("Backspace")
+        page.keyboard.type(text)
+
+    def get_cropped_boxes():
+        encoded_bytes, full_page_width, full_page_height = (
+            screenshot_process(state=state)
+        )
+
+        if full_page_height == old_page_height:
+            cropped_bytes, min_cut_off_height, max_cut_off_height = (
+                pixel_image_cropping(
+                    encoded_bytes1=old_encoded_bytes,
+                    encoded_bytes2=encoded_bytes
+                )
+            )
+
+        else:
+            (
+                do_not_use_bytes,
+                current_boxes_details,
+                full_page_width,
+                full_page_height
+            ) = omniparser_process(state=state)
+
+            cropped_bytes, min_cut_off_height, max_cut_off_height = (
+                cropped_image_process(
+                    encoded_bytes1=old_encoded_bytes,
+                    boxes_details1=old_boxes_details,
+                    encoded_bytes2=encoded_bytes,
+                    boxes_details2=current_boxes_details,
+                    cut_off_height=cut_off_height,
+                    full_page_width=full_page_width,
+                    old_page_height=old_page_height,
+                    state=state
+                )
+            )
+
+        expanded_bytes, boxes_details, _, _ = omniparser_process(
+            encoded_bytes=cropped_bytes,
+            state=state
+        )
+
+        return boxes_details
+
+    original_text = combine_text(
+        boxes_details=cropped_boxes_details1,
+        search_text=list_text[0]
+    )
+
+    used_enter = True
+
+    for i in range(1, len(list_text)):
+        search_text = list_text[i]
+
+        print(f"Checking search option: {search_text}")
+
+        if page.is_closed():
+            print("Page closed during check_used_enter_search_options.")
+            return False, used_enter, state
+
+        # Type the next search.
+        replace_search_text(search_text)
+        time.sleep(0.1)
+
+        # Check the page before pressing Enter.
+        boxes_details = get_cropped_boxes()
+
+        # Verify that the second search was successfully typed.
+        if i == 1:
+            combined_text = combine_text(
+                boxes_details=boxes_details
+            )
+
+            if normalize_text(search_text) not in combined_text:
+                print("Second search text did not appear.")
+                return False, False, state
+
+            print("Second search text successfully appeared.")
+
+        current_text = combine_text(
+            boxes_details=boxes_details,
+            search_text=search_text
+        )
+
+        # Check if options appeared without pressing Enter.
+        if not compare_text(
+            text1=original_text,
+            text2=current_text
+        ):
+            print(f"Search options appeared without Enter: {search_text}")
+            return True, False, state
+
+        if page.is_closed():
+            return False, used_enter, state
+
+        # Press Enter and check again.
+        page.keyboard.press("Enter")
+        time.sleep(0.1)
+
+        if page.is_closed():
+            return False, used_enter, state
+
+        boxes_details = get_cropped_boxes()
+
+        current_text = combine_text(
+            boxes_details=boxes_details,
+            search_text=search_text
+        )
+
+        # Check if options appeared after pressing Enter.
+        if not compare_text(
+            text1=original_text,
+            text2=current_text
+        ):
+            print(f"Search options appeared with Enter: {search_text}")
+            return True, True, state
+
+    # Restore the original search.
+    if not page.is_closed():
+        replace_search_text(list_text[0])
+        time.sleep(0.1)
+        page.keyboard.press("Enter")
+
+    print("No search options appeared.")
+
+    return False, used_enter, state
+
+def check_used_enter(current_answer: list, list_text: list[str], before_text: str, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
+    page = state["current_page"]["page"]
+    encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
+    do_not_use, boxes_details, full_page_width1, full_page_height1 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
+    if full_page_height == old_page_height:
+        print("used pixel image cropping inside of check used enter")
+        encoded_bytes, min_cut_off_height, max_cut_off_height = pixel_image_cropping(encoded_bytes1=old_encoded_bytes, encoded_bytes2=encoded_bytes)
+    else:
+        print("used cropped image process inside of check used enter")
+        encoded_bytes, min_cut_off_height, max_cut_off_height = cropped_image_process(encoded_bytes1=old_encoded_bytes, boxes_details1=old_boxes_details, old_page_height=old_page_height, encoded_bytes2=encoded_bytes, boxes_details2=boxes_details, state=state)
+    encoded_bytes, boxes_details, full_page_width2, full_page_height2 = omniparser_process(encoded_bytes=encoded_bytes, state=state)
+    page_elements = []
+    for i in range(len(boxes_details)):
+        current_box = boxes_details[i]
+        icon = current_box["icon"]
+        box_type = current_box["type"]
+        bbox = current_box["bbox"]
+        coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
+        content = current_box["content"]
+        page_elements.append([icon, box_type, coordinates, content])
+    body_text = page.locator("body") or ""
+    prompt = f"""
+You’re an AI Applicant Helper in the check search enter process.
+
+You will only be looking at the current question and no other questions.
+
+Current Question: {current_answer}
+
+List of Searches: {list_text}
+
+Page Elements: {page_elements}
+
+You have 3 goals
+
+1. Determine if options are shown
+2. Determine if there was an error caused by the search
+3. Give us a list of backup searches
+
+If there are options/dropdown options shown for the current question mark options_shown as True, if there are no options/dropdown options shown mark options_shown as False.
+
+Next you need to look at the before and after text as well as the image to determine if there was an error caused by pressing enter.
+
+Error shown Subprocess:
+
+1. Look at the before and current text, if there is error text in the before text that means that this error was already present before and you should mark error_caused as False, if there isn’t an error indications in the before text then mark error_caused as True.
+2. If there is an error_caused then you need to look at the page elements to find the icon to enter our backup searches.
+
+Before Text: {before_text}
+
+Current Text: {body_text}
+
+Next you need to give a list of backup searches options to search for the Current Question
+
+Follow this subprocess to give backup searches options options.
+
+1. Look at the Current Question
+2. Look at the User Profile
+3. Respond with a list that contains one ONE WORD per search or searches
+
+Ex: [skill, Carolina, Wyoming]
+
+Ex: [skills]
+
+DON’T HAVE MULTIPLE WORDS
+
+Example Response 1:
+
+{{
+    options_shown: True
+
+    error_caused: False
+
+    backup_searches: [],
+
+    icon: -1
+
+    Since options are shown for the current question that means no errors are caused. Also it means we don’t need any backup searches. No icon needed so I chose -1
+}}
+
+Example Response 2:
+
+{{
+    options_shown: False,
+
+    error_caused: False,
+
+    backup_searches: [Louisburg],
+
+    icon: -1
+
+    There is no dropdown options shown. There is error in both the before and current text meaning the error was not caused by pressing enter. We gave a backup searches options to the former search. No icon needed so I choose -1.
+}}
+
+Example Response 3:
+
+{{
+    options_shown: False,
+
+    error_caused: True,
+
+    backup_searches: [skill1, skill8, skill10],
+
+    icon: 12
+
+    There is no dropdown options shown. There is no error in the before text but error in the current text making error_caused True. We looked at the User Profile for backup Searches. Based on the image and the Page Elements we are choosing icon 12 to enter more searches.
+}}
+
+USER PROFILE
+Account:
+email={state["email"]}
+password={state["password"]}
+
+Personal:
+first_name={state["first_name"]}
+last_name={state["last_name"]}
+phone={state["phone_number"]}
+
+Address:
+address1={state["address_line1"]}
+address2={state["address_line2"]}
+city={state["city"]}
+state={state["user_state"]}
+zip={state["zip_code"]}
+country={state["country"]}
+date={state["date"]}
+
+Eligibility:
+work_authorized={state["work_authorized"]}
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+veteran={state["veteran"]}
+disability={state["disability"]}
+
+Professional:
+linkedin={state["linkedin_url"]}
+github={state["github_url"]}
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+{state["work_experience"]}
+
+Education:
+{state["education"]}
+
+Resume:
+{state["resume_text"]}
+
+Cover Letter:
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+"""
+    response = check_used_enter_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{encoded_bytes}"}}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"check used enter answer: {answer}")
+    options_shown = answer.get("options_shown")
+    caused_error = answer.get("caused_error")
+    backup_searches = answer.get("backup_searches")
+    icon = answer.get("icon")
+    if not options_shown and caused_error:
+        context = state.get("context")
+        page_count = len(context.pages)
+        new_answer = ["click", icon]
+        current_box = boxes_details[icon]
+        current_bbox = current_box["bbox"]
+        if min_cut_off_height is None or max_cut_off_height is None:
+            new_page_height = full_page_height
+        else:
+            new_page_height = max_cut_off_height - min_cut_off_height
+        desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, full_page_height1=full_page_height, full_page_height2=new_page_height, desired_bbox=current_bbox)
+        current_box["bbox"] = desired_box
+        middle_x, middle_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
+        state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, process=True, state=state)
+    return options_shown, caused_error, backup_searches, state
 
 def quick_select_process(current_answer: dict, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
     page = state["current_page"]["page"]
@@ -4473,7 +4835,7 @@ def extra_steps_process(current_answer: list, old_encoded_bytes: str, old_boxes_
     decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
     buffer = io.BytesIO(decoded_bytes)
     image = Image.open(buffer)
-    image.show()
+    # image.show()
     comparison_page_width2, comparison_page_height2 = image.size
     encoded_bytes = boxes_only_process(encoded_bytes=encoded_bytes, boxes_details=boxes_details)
     page_elements = []
@@ -4507,8 +4869,8 @@ Extra Steps Process
 
 1. First you need to determine what type of action we will be taking and the options you have are, dropdown, search, and time.
     - dropdown: if you see options/dropdown options for the current question that means we might be using dropdown unless we need to search for the answer else it is certainly a dropdown action.
-    - Search: If there're no options available for the current question and this is not a time question that means we are using the search action.
-    - Time: If you see for the current question that there is no options and it is a time question we will be using the time action.
+    - Search: If you need to search for something and there are no dropdown options or no dropdown options with your answer and there are a lot of options.
+    - Time: If you see for the current question that there is no dropdown and it is a time question we will be using the time action.
 
 How to handle each action.
 
@@ -4675,6 +5037,8 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
         state = dropdown_process(current_answer=current_answer, previous_action=action_type, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, page_x=page_x, page_y=page_y, first_text=first_text, desired_text=desired_text, desired_option=desired_option, total_options=total_options, image1=image1, image2=image2, state=state)
     elif action == "search":
         if full_page_height == old_page_height:
+            print("used old x and old y in extra steps search")
+            context = state.get("context")
             page.mouse.click(page_x, page_y)
         else:
             print("used find icon in extra steps")
@@ -4686,19 +5050,6 @@ If asked how the job was found, prefer "Other", "Job Board", "Website", or the c
             else:
                 page.mouse.click(page_x, page_y)
             
-        context = state.get("context")
-        page_count = len(context.pages)
-        new_answer = ["click", icon]
-        current_box = boxes_details[icon]
-        current_bbox = current_box["bbox"]
-        if min_cut_off_height is None or max_cut_off_height is None:
-            new_page_height = full_page_height
-        else:
-            new_page_height = max_cut_off_height - min_cut_off_height
-        desired_box = cropped_coordinates_process(min_cut_off_height=min_cut_off_height, full_page_height1=full_page_height, full_page_height2=new_page_height, desired_bbox=current_bbox)
-        current_box["bbox"] = desired_box
-        page_x, page_y = coordinates_process(coordinates=desired_box, full_page_width=full_page_width, full_page_height=full_page_height)
-        state = execute_action(current_answer=new_answer, current_box=current_box, full_page_width=full_page_width, full_page_height=full_page_height, page_count=page_count, process=True, state=state)
         state = search_process(current_answer=current_answer, list_text=list_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, old_x=page_x, old_y=page_y, state=state)
     elif action == "time":
         state = time_process(current_answer=current_answer, desired_date=desired_date, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, full_page_width=full_page_width, page_x=page_x, page_y=page_y, image1=image1, image2=image2, state=state)
@@ -6572,6 +6923,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     previous_answers = []
     for i in range(6):
         if not image1:
+            full_page_width = page.evaluate("""() => { return Math.max( document.body.scrollWidth, document.documentElement.scrollWidth, document.body.offsetWidth, document.documentElement.offsetWidth, document.body.clientWidth, document.documentElement.clientWidth ); }""")
             pyautogui_image = pyautogui.screenshot(region=(10, 40, full_page_width, 910))
             buffer = io.BytesIO()
             pyautogui_image.save(buffer, format="PNG")
@@ -6604,7 +6956,7 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
         decoded_bytes = base64.b64decode(encoded_bytes.encode("utf-8"))
         buffer1 = io.BytesIO(decoded_bytes)
         image1 = Image.open(buffer1)
-        image1.show()
+        # image1.show()
         page_elements = []
         for i in range(len(boxes_details)):
             current_box = boxes_details[i]
@@ -6636,6 +6988,13 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     [icon, type, coordinates, content]
 
     Page Elements: {page_elements}
+
+    Dropdown choices
+    1. complete - this is when the page is finished
+    2. click - use this when you need to click something
+    3. arrow - use this when you need to choose a dropdown option that is not visible
+    4. fill - use this when you just need to fill text in and not search.
+    5. search - use this when you need to search and find an answer.
 
     Dropdown Process:
     1. First find the current question in the photo.
@@ -6734,6 +7093,13 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     [icon, type, coordinates, content]
 
     Page Elements: {page_elements}
+
+    Dropdown choices
+    1. complete - this is when the page is finished
+    2. click - use this when you need to click something
+    3. arrow - use this when you need to choose a dropdown option that is not visible
+    4. fill - use this when you just need to fill text in and not search.
+    5. search - use this when you need to search and find an answer.
 
     Dropdown Process:
     1. First find the current question in the photo.
@@ -6842,6 +7208,13 @@ def dropdown_process(current_answer: list, previous_action: str, old_encoded_byt
     [icon, type, coordinates, content]
 
     Page Elements: {page_elements}
+
+    Dropdown choices
+    1. complete - this is when the page is finished
+    2. click - use this when you need to click something
+    3. scroll - use this when you need to choose a dropdown option that is not visible
+    4. fill - use this when you just need to fill text in and not search.
+    5. search - use this when you need to search and find an answer.
 
     Dropdown Process:
     1. First find the current question in the photo.
@@ -7549,6 +7922,122 @@ def check_arrow_option(old_encoded_bytes: str, old_boxes_details: list[dict], ol
     print(f"Desired text not found: {desired_text}")
     return False, state
 
+def quick_search_options(current_answer: list, list_text: list[str], state: ApplicationState):
+    prompt = f"""
+You’re an AI Applicant Helper in the get more searches function.
+
+Your job is to look at the current question, look at the list of failed searches and then User Profile to give a list of searches to try.
+
+All the list of text must be one word.
+
+Good example: [Carolina, Skills, hello]
+
+Bad example: [North Carolina, a lot of skills, hello that is great]
+
+The more_searches must be one word searches that have not already been tried and that are done based on the User Profile.
+
+Current Question: {current_answer}
+
+Failed Searches: {list_text}
+
+Example Response 1:
+
+{{
+
+more_searches: [skill4, skill8, skill10]
+
+These are all one word searches that have not been done in the failed searches.
+
+}}
+
+USER PROFILE
+
+Account:
+
+email={state["email"]}
+
+password={state["password"]}
+
+Personal:
+
+first_name={state["first_name"]}
+
+last_name={state["last_name"]}
+
+phone={state["phone_number"]}
+
+Address:
+
+address1={state["address_line1"]}
+
+address2={state["address_line2"]}
+
+city={state["city"]}
+
+state={state["user_state"]}
+
+zip={state["zip_code"]}
+
+country={state["country"]}
+
+date={state["date"]}
+
+Eligibility:
+
+work_authorized={state["work_authorized"]}
+
+requires_sponsorship={state["requires_sponsorship"]}
+
+Self-ID:
+
+veteran={state["veteran"]}
+
+disability={state["disability"]}
+
+Professional:
+
+linkedin={state["linkedin_url"]}
+
+github={state["github_url"]}
+
+portfolio={state["portfolio_url"]}
+
+Work Experience:
+
+{state["work_experience"]}
+
+Education:
+
+{state["education"]}
+
+Resume:
+
+{state["resume_text"]}
+
+Cover Letter:
+
+{state["cover_letter_text"]}
+
+If asked how the job was found, prefer "Other", "Job Board", "Website", or the closest equivalent.
+
+"""
+    response = quick_search_options_llm2.invoke([
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": prompt}
+            ]
+        }
+    ])
+    details = response["raw"]
+    new_tokens, model_name = details_process(details=details)
+    state = ai_token_tracker(new_tokens=new_tokens, model_name=model_name, state=state)
+    answer = response["parsed"]
+    print(f"quick search options answer: {answer}")
+    search_options = answer.get("search_options")
+    return search_options, state
+
+
 def search_process(current_answer: list[str], list_text: list[str], old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, old_x: int, old_y: int, cut_off_height: int, state: ApplicationState):
     page = state["current_page"]["page"]
     used_enter, state = check_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
@@ -7595,8 +8084,23 @@ def search_process(current_answer: list[str], list_text: list[str], old_encoded_
 
     do_not_use, cropped_boxes_details1, do_not_use_width, do_not_use_height = omniparser_process(encoded_bytes=cropped_encoded_bytes, state=state)
 
+    before_text = page.locator("body") or ""
     used_enter, state = check_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, cropped_encoded_bytes=cropped_encoded_bytes, cropped_boxes_details1=cropped_boxes_details1, list_text=list_text, state=state)
-    print(f"used enter: {used_enter}")
+    if used_enter:
+        options_shown, caused_error, backup_searches, state = check_used_enter(current_answer=current_answer, list_text=list_text, before_text=before_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
+        if not options_shown and caused_error:
+            used_enter = False
+        if not options_shown and not caused_error:
+            cropped_encoded_bytes, min_cut_off_height, max_cut_off_height
+            complete, used_enter, state = check_used_enter_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, cropped_encoded_bytes=cropped_encoded_bytes, cropped_boxes_details1=cropped_boxes_details1, list_text=list_text, state=state)
+            if not complete:
+                search_options, state = quick_search_options(current_answer=current_answer, list_text=list_text, state=state)
+                list_text = search_options
+                complete, used_enter, state = check_used_enter_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, cropped_encoded_bytes=cropped_encoded_bytes, cropped_boxes_details1=cropped_boxes_details1, list_text=list_text, state=state)
+                if not complete:
+                    print("no options are working at all")
+                    return state
+        print(f"used enter: {used_enter}")
 
     for i in range(500):
         page.keyboard.press("ArrowRight")

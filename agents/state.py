@@ -256,6 +256,15 @@ class SearchProcess(TypedDict):
     typed_search: bool | None
     reason: str
 
+class QuickSearchOptions(TypedDict):
+    search_options: list[str]
+
+class CheckUsedEnter(TypedDict):
+    options_shown: bool
+    caused_error: bool
+    boolbackup_searches: bool
+    icon: int
+
 class ReviewMarkdownProcess(TypedDict):
     action: str | None
     icon: int | None
