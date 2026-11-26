@@ -2460,7 +2460,7 @@ def check_search_options(old_encoded_bytes: str, old_boxes_details: list[dict], 
     page = state["current_page"]["page"]
 
     if not list_text:
-        return False, state
+        return False, [], state
 
     def combine_text(boxes_details, search_text):
         search_text = normalize_text(search_text)
@@ -2485,16 +2485,31 @@ def check_search_options(old_encoded_bytes: str, old_boxes_details: list[dict], 
     def replace_search_text(text):
         page.keyboard.press("ControlOrMeta+A")
         page.keyboard.press("Backspace")
-        page.keyboard.type(text)
+
+        if text:
+            page.keyboard.type(text)
 
     original_text = combine_text(boxes_details=cropped_boxes_details1, search_text=list_text[0])
 
-    for i in range(len(list_text)):
-        print(f"Checking search option: {list_text[i]}")
+    search_options = [list_text[0], "ca"] + [
+        text for text in list_text[1:]
+        if text.lower() != "ca"
+    ]
+
+    for i in range(len(search_options)):
+        current_search = search_options[i]
+
+        print(f"Checking search option: {current_search}")
 
         if page.is_closed():
             print("Page closed during check_search_options.")
-            return False, state
+
+            remaining_options = [
+                text for text in search_options[i:]
+                if text.lower() != "ca"
+            ]
+
+            return False, remaining_options, state
 
         encoded_bytes, full_page_width, full_page_height = screenshot_process(state=state)
 
@@ -2507,14 +2522,26 @@ def check_search_options(old_encoded_bytes: str, old_boxes_details: list[dict], 
 
         expanded_bytes, boxes_details, full_page_width, full_page_height = omniparser_process(encoded_bytes=cropped_bytes, state=state)
 
-        current_text = combine_text(boxes_details=boxes_details, search_text=list_text[i])
+        current_text = combine_text(boxes_details=boxes_details, search_text=current_search)
 
         if not compare_text(text1=original_text, text2=current_text):
-            print(f"Search options changed for: {list_text[i]}")
-            return False, state
+            print(f"Search options changed for: {current_search}")
 
-        if i < len(list_text) - 1:
-            replace_search_text(list_text[i + 1])
+            remaining_options = [
+                text for text in search_options[i:]
+                if text.lower() != "ca"
+            ]
+
+            if current_search.lower() == "ca":
+                if remaining_options:
+                    replace_search_text(remaining_options[0])
+                else:
+                    replace_search_text("")
+
+            return False, remaining_options, state
+
+        if i < len(search_options) - 1:
+            replace_search_text(search_options[i + 1])
 
     if used_enter:
         replace_search_text(list_text[0])
@@ -2526,7 +2553,7 @@ def check_search_options(old_encoded_bytes: str, old_boxes_details: list[dict], 
 
     print("Search options check completed.")
 
-    return True, state
+    return True, [], state
 
 def check_used_enter_search_options(
     old_encoded_bytes: str,
@@ -2536,12 +2563,13 @@ def check_used_enter_search_options(
     cropped_encoded_bytes: str,
     cropped_boxes_details1: list[dict],
     list_text: list[str],
-    state: ApplicationState
+    state: ApplicationState,
+    backup_options: bool = False
 ):
     page = state["current_page"]["page"]
 
-    if len(list_text) < 2:
-        return False, True, state
+    if not list_text:
+        return False, True, [], state
 
     def combine_text(boxes_details, search_text=None):
         reorganized_elements = sorted(
@@ -2621,14 +2649,50 @@ def check_used_enter_search_options(
 
     used_enter = True
 
-    for i in range(1, len(list_text)):
+    start_index = 0 if backup_options else 1
+
+    remaining_options = list_text[start_index:]
+
+    # First check "ca" by automatically pressing Enter.
+    search_text = "ca"
+
+    print(f"Checking search option with Enter: {search_text}")
+
+    replace_search_text(search_text)
+    time.sleep(0.1)
+
+    page.keyboard.press("Enter")
+    time.sleep(0.1)
+
+    boxes_details = get_cropped_boxes()
+
+    combined_text = combine_text(
+        boxes_details=boxes_details
+    )
+
+    # Verify that "ca" successfully appeared.
+    if normalize_text(search_text) not in combined_text:
+        print("Search text 'ca' did not appear.")
+        return False, False, remaining_options, state
+
+    current_text = combine_text(
+        boxes_details=boxes_details,
+        search_text=search_text
+    )
+
+    # Check if options appeared after pressing Enter with "ca".
+    if not compare_text(
+        text1=original_text,
+        text2=current_text
+    ):
+        print(f"Search options appeared with Enter: {search_text}")
+        return True, True, remaining_options, state
+
+    # Continue the normal alternating search process.
+    for i in range(start_index, len(list_text)):
         search_text = list_text[i]
 
         print(f"Checking search option: {search_text}")
-
-        if page.is_closed():
-            print("Page closed during check_used_enter_search_options.")
-            return False, used_enter, state
 
         # Type the next search.
         replace_search_text(search_text)
@@ -2637,17 +2701,17 @@ def check_used_enter_search_options(
         # Check the page before pressing Enter.
         boxes_details = get_cropped_boxes()
 
-        # Verify that the second search was successfully typed.
-        if i == 1:
-            combined_text = combine_text(
-                boxes_details=boxes_details
-            )
+        combined_text = combine_text(
+            boxes_details=boxes_details
+        )
 
-            if normalize_text(search_text) not in combined_text:
-                print("Second search text did not appear.")
-                return False, False, state
+        # Verify that the search was successfully typed.
+        if normalize_text(search_text) not in combined_text:
+            print(f"Search text did not appear: {search_text}")
 
-            print("Second search text successfully appeared.")
+            remaining_options = list_text[i:]
+
+            return False, False, remaining_options, state
 
         current_text = combine_text(
             boxes_details=boxes_details,
@@ -2660,17 +2724,14 @@ def check_used_enter_search_options(
             text2=current_text
         ):
             print(f"Search options appeared without Enter: {search_text}")
-            return True, False, state
 
-        if page.is_closed():
-            return False, used_enter, state
+            remaining_options = list_text[i + 1:]
+
+            return True, False, remaining_options, state
 
         # Press Enter and check again.
         page.keyboard.press("Enter")
         time.sleep(0.1)
-
-        if page.is_closed():
-            return False, used_enter, state
 
         boxes_details = get_cropped_boxes()
 
@@ -2685,17 +2746,19 @@ def check_used_enter_search_options(
             text2=current_text
         ):
             print(f"Search options appeared with Enter: {search_text}")
-            return True, True, state
+
+            remaining_options = list_text[i + 1:]
+
+            return True, True, remaining_options, state
 
     # Restore the original search.
-    if not page.is_closed():
-        replace_search_text(list_text[0])
-        time.sleep(0.1)
-        page.keyboard.press("Enter")
+    replace_search_text(list_text[0])
+    time.sleep(0.1)
+    page.keyboard.press("Enter")
 
     print("No search options appeared.")
 
-    return False, used_enter, state
+    return False, used_enter, [], state
 
 def check_used_enter(current_answer: list, list_text: list[str], before_text: str, old_encoded_bytes: str, old_boxes_details: list[dict], old_page_height: int, cut_off_height: int, state: ApplicationState):
     page = state["current_page"]["page"]
@@ -2717,9 +2780,9 @@ def check_used_enter(current_answer: list, list_text: list[str], before_text: st
         coordinates = [round(bbox[0], 4), round(bbox[1], 4), round(bbox[2], 4), round(bbox[3], 4)]
         content = current_box["content"]
         page_elements.append([icon, box_type, coordinates, content])
-    body_text = page.locator("body") or ""
+    body_text = page.locator("body").inner_text() or ""
     prompt = f"""
-You’re an AI Applicant Helper in the check search enter process.
+You're an AI Applicant Helper in the check search enter process.
 
 You will only be looking at the current question and no other questions.
 
@@ -7940,14 +8003,26 @@ Current Question: {current_answer}
 
 Failed Searches: {list_text}
 
+The logic you need to follow:
+    - If there is 1 or less failed searches then 2 backup searches.
+    - If there is 2 or more failed searches then only give one replacement per search
+
 Example Response 1:
 
 {{
 
 more_searches: [skill4, skill8, skill10]
 
+The failed searches had 3 searches so I gave 3 replacements
 These are all one word searches that have not been done in the failed searches.
 
+}}
+
+Example Response 2:
+{{
+more_searches: [texas, georgia]
+
+We had one failed search so I gave 2 replacements.
 }}
 
 USER PROFILE
@@ -8050,7 +8125,10 @@ def search_process(current_answer: list[str], list_text: list[str], old_encoded_
     print(f"page: {page}")
     print(f"current answer: {current_answer}")
     context = state.get("context")
-
+    if len(list_text) == 1:
+        one_text = True
+    else:
+        one_text = False
     typing_text = []
     if len(list_text) > 1:
         typing_text = list_text[1:]
@@ -8084,15 +8162,22 @@ def search_process(current_answer: list[str], list_text: list[str], old_encoded_
 
     do_not_use, cropped_boxes_details1, do_not_use_width, do_not_use_height = omniparser_process(encoded_bytes=cropped_encoded_bytes, state=state)
 
-    before_text = page.locator("body") or ""
-    used_enter, state = check_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, cropped_encoded_bytes=cropped_encoded_bytes, cropped_boxes_details1=cropped_boxes_details1, list_text=list_text, state=state)
+    before_text = page.locator("body").inner_text() or ""
+    used_enter, remaining_options, state = check_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, cropped_encoded_bytes=cropped_encoded_bytes, cropped_boxes_details1=cropped_boxes_details1, list_text=list_text, state=state)
+    if not used_enter:
+        if len(remaining_options) > 0:
+            list_text = remaining_options
+            most_recent_search = list_text[0]
+        else:
+            search_options, state = quick_search_options(current_answer=current_answer, list_text=list_text, state=state)
     if used_enter:
         options_shown, caused_error, backup_searches, state = check_used_enter(current_answer=current_answer, list_text=list_text, before_text=before_text, old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, state=state)
         if not options_shown and caused_error:
             used_enter = False
         if not options_shown and not caused_error:
-            cropped_encoded_bytes, min_cut_off_height, max_cut_off_height
-            complete, used_enter, state = check_used_enter_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, cropped_encoded_bytes=cropped_encoded_bytes, cropped_boxes_details1=cropped_boxes_details1, list_text=list_text, state=state)
+            complete, used_enter, remaining_options, state = check_used_enter_search_options(old_encoded_bytes=old_encoded_bytes, old_boxes_details=old_boxes_details, old_page_height=old_page_height, cut_off_height=cut_off_height, cropped_encoded_bytes=cropped_encoded_bytes, cropped_boxes_details1=cropped_boxes_details1, list_text=list_text, state=state)
+            if len(remaining_options == 0):
+                search_options, state = quick_search_options(current_answer=current_answer, list_text=list_text, state=state)
             if not complete:
                 search_options, state = quick_search_options(current_answer=current_answer, list_text=list_text, state=state)
                 list_text = search_options
